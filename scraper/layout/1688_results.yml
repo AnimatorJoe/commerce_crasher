@@ -13,7 +13,7 @@ products:
             xpath: null
             type: Text
         url:
-            css: 'div.mojar-element-title.mojar-element-title-one-line > a'
+            css: 'div.mojar-element-image > a'
             xpath: null
             type: Link
         image:

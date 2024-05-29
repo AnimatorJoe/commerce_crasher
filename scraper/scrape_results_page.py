@@ -3,12 +3,13 @@ import json
 from time import sleep
 from playwright.sync_api import sync_playwright
 from selectorlib import Extractor
+from typing import Optional
 
 # Create an Extractor by reading from the YAML file
 e_amzn = Extractor.from_yaml_file('./layout/amazon_results.yml')
 e_1688 = Extractor.from_yaml_file('./layout/1688_results.yml')
 
-def scrape(keyword, source, result_output=None, corpus_output=None):
+def scrape(keyword: str, source: str, result_output: Optional[str] = None, corpus_output: Optional[str] = None) -> dict:
     if source not in ["amazon", "1688"]:
         print("invalid source, select either 'amazon' or '1688'")
         return
@@ -18,9 +19,9 @@ def scrape(keyword, source, result_output=None, corpus_output=None):
     result = e.extract(corpus)
     
     if result_output:
-        with open(result_output, 'w') as outfile:
+        with open(result_output, 'w', encoding="utf-8") as outfile:
             for product in result['products']:
-                json.dump(product, outfile)
+                json.dump(product, outfile, ensure_ascii=False)
                 outfile.write("\n")
     
     if corpus_output:
@@ -29,7 +30,7 @@ def scrape(keyword, source, result_output=None, corpus_output=None):
     
     return result
 
-def get_amazon_corpus(keyword):
+def get_amazon_corpus(keyword: str) -> Optional[str]:
     headers = {
         'dnt': '1',
         'upgrade-insecure-requests': '1',
@@ -44,23 +45,29 @@ def get_amazon_corpus(keyword):
     }
         
     url = f"https://www.amazon.com/s?k={keyword}"
+    print("Downloading %s"%url)   
     r = requests.get(url, headers=headers)
     
     # Simple check to check if page was blocked (Usually 503)
     if r.status_code > 500:
         if "To discuss automated access to Amazon data please contact" in r.text:
-            print("Page %s was blocked by Amazon. Please try using better proxies\n"%url)
+            print("Page %s was blocked by Amazon. Please try using better proxies if failure persists."%url)
         else:
             print("Page %s must have been blocked by Amazon as the status code was %d"%(url,r.status_code))
-        return None
-    
+        
+        print("attempting to bypass with webdriver")
+        return scrape_with_driver(url)
     return r.text
     
-def get_1688_corpus(keyword):
+def get_1688_corpus(keyword: str) -> Optional[str]:
     # Download the page using requests
     url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={keyword}"
     print("Downloading %s"%url)
     
+    # cannot use get request because 1688 page renders with javascript
+    return scrape_with_driver(url)
+
+def scrape_with_driver(url: str) -> Optional[str]:
     contents = None
 
     with sync_playwright() as p:
