@@ -25,3 +25,13 @@ products:
             xpath: null
             type: Attribute
             attribute: aria-label
+        reviews:
+            css: 'div.a-row.a-size-small span:nth-of-type(2) span'
+            xpath: null     
+            type: Attribute
+            attribute: aria-label
+        purchases:
+            css: 'div.a-row.a-size-base span'
+            xpath: null     
+            type: Text
+

@@ -1,22 +1,27 @@
 import requests 
-import json 
+import json
+import os
 from time import sleep
 from playwright.sync_api import sync_playwright
 from selectorlib import Extractor
 from typing import Optional
 
-# Create an Extractor by reading from the YAML file
-e_amzn = Extractor.from_yaml_file('./layout/amazon_results.yml')
-e_1688 = Extractor.from_yaml_file('./layout/1688_results.yml')
+sources = ["amazon", "1688"]
 
-def scrape(keyword: str, source: str, result_output: Optional[str] = None, corpus_output: Optional[str] = None) -> dict:
-    if source not in ["amazon", "1688"]:
-        print("invalid source, select either 'amazon' or '1688'")
-        return
+e_amzn = Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layout/amazon_results.yml"))
+e_1688 = Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layout/1688_results.yml"))
+
+def scrape(keyword: str, source: str, result_output: Optional[str] = None, corpus_output: Optional[str] = None) -> Optional[list]:
+    assert source in sources, f"source should be one of {sources}"
         
     corpus = get_amazon_corpus(keyword) if source == "amazon" else get_1688_corpus(keyword)
     e = e_amzn if source == "amazon" else e_1688
     result = e.extract(corpus)
+    
+    if result is None or result['products'] is None:
+        print("extraction of products from web page failed, recieved the following result")
+        print(result)
+        return None
     
     if result_output:
         with open(result_output, 'w', encoding="utf-8") as outfile:
@@ -28,7 +33,7 @@ def scrape(keyword: str, source: str, result_output: Optional[str] = None, corpu
         with open(corpus_output, 'w') as outfile:
             outfile.write(corpus)
     
-    return result
+    return result['products']
 
 def get_amazon_corpus(keyword: str) -> Optional[str]:
     headers = {
