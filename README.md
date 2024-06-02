@@ -8,6 +8,7 @@ A tool for recursively finding product ideas on amazon.com by referencing prices
 
 ```
 OPENAI_API_KEY=[openai api key]
+SCRAPER_API_KEY=[optional scraperapi api key for proxies]
 ```
 
 2. Create venv and install dependencies

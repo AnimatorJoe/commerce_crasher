@@ -1,10 +1,15 @@
 import requests 
 import json
 import os
+
 from time import sleep
-from playwright.sync_api import sync_playwright
-from selectorlib import Extractor
 from typing import Optional
+
+from playwright.sync_api import sync_playwright
+from dotenv import load_dotenv
+from selectorlib import Extractor
+
+load_dotenv()
 
 sources = ["amazon", "1688"]
 
@@ -56,7 +61,7 @@ def get_amazon_corpus(keyword: str) -> Optional[str]:
     # Simple check to check if page was blocked (Usually 503)
     if r.status_code > 500:
         if "To discuss automated access to Amazon data please contact" in r.text:
-            print("Page %s was blocked by Amazon. Please try using better proxies if failure persists."%url)
+            print("Page %s was blocked by Amazon."%url)
         else:
             print("Page %s must have been blocked by Amazon as the status code was %d"%(url,r.status_code))
         
@@ -65,15 +70,27 @@ def get_amazon_corpus(keyword: str) -> Optional[str]:
     return r.text
     
 def get_1688_corpus(keyword: str) -> Optional[str]:
-    # Download the page using requests
     url = f"https://s.1688.com/selloffer/offer_search.htm?keywords={keyword}"
     print("Downloading %s"%url)
     
     # cannot use get request because 1688 page renders with javascript
-    return scrape_with_driver(url)
+    page = scrape_with_driver(url)
+    
+    extract = e_1688.extract(page) # TODO: have a better way to check if extraction failed
+    if extract is None or extract['products'] is None:
+        print("products cannot be extracted from 1688 web page, retrying page load with proxy")
+        page = scrape_with_driver(url, proxie=True)
+    
+    return page
 
-def scrape_with_driver(url: str) -> Optional[str]:
+def scrape_with_driver(url: str, proxie: bool = False) -> Optional[str]:
     contents = None
+    
+    if proxie:
+        if not os.getenv('SCRAPER_API_KEY'):
+            print("no scraper api key found, please set the SCRAPER_API_KEY environment variable")
+            return None
+        url = f"http://api.scraperapi.com?api_key={os.getenv('SCRAPER_API_KEY')}&url={url}"
 
     with sync_playwright() as p:
         # Launch browser

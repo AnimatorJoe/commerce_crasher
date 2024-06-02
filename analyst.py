@@ -1,4 +1,7 @@
 import ast
+import os
+import urllib.parse
+from datetime import datetime
 from typing import Callable, Optional
 
 from api.conversation import Conversation
@@ -6,11 +9,14 @@ from scraper.scrape_results_page import scrape
 
 sources = ["amazon", "1688"]
 
+current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+run_dir = f"runs_{current_date_time}"
+os.makedirs(run_dir, exist_ok=True)
 
 def summarize_keyword_conditions(keyword: str) -> Optional[Conversation]:
     c = Conversation(instruction="please answer in a short sentence and provide a reason")
     
-    analytics = analyze_keyword(keyword)
+    analytics = generate_keyword_analytics(keyword)
     if analytics is None:
         print(f"analystics generation failed for keyword - {keyword}")
         return None
@@ -26,14 +32,18 @@ def summarize_keyword_conditions(keyword: str) -> Optional[Conversation]:
         {stringified_analytics}
         please provide a summary on the challenges of this market, whether it is over saturated, low demand, etc. and why""",
         [listing['image'] for listing in analytics if listing is not None])
+    
+    log_conversation(c, f"{run_dir}/summary_{keyword}_{current_date_time}.txt") 
+    
+    return c   
 
-def analyze_keyword(keyword: str) -> Optional[list]:
-    search_results = scrape(keyword, "amazon")
+def generate_keyword_analytics(keyword: str) -> Optional[list]:
+    search_results = scrape(keyword, "amazon", result_output=f"{run_dir}/amazon_{current_date_time}_{keyword}.jsonl")
     
     analytics = []
     
     for listing in search_results:
-        result = analyze_listing(listing)
+        result = analyze_product(listing)
         if result is None:
             analytics.append(None)
             continue
@@ -48,7 +58,7 @@ def analyze_keyword(keyword: str) -> Optional[list]:
         
     return analytics
 
-def analyze_listing(listing: str) -> Optional[list]:
+def analyze_product(listing: str) -> Optional[list]:
     assert set(["name", "price", "image", "url"]).issubset(set(listing.keys())), "listing should have name and image keys"
     
     c = Conversation(instruction="please only answer each question with a python list of strings, no markdown")
@@ -69,22 +79,24 @@ def analyze_listing(listing: str) -> Optional[list]:
     results = []
     
     for st in search_terms:
-        listings = scrape(st, "1688")
+        st_encoded = urllib.parse.quote(st.encode('gb2312'))
+        listings = scrape(st_encoded, "1688", result_output=f"{run_dir}/1688_{current_date_time}_{st}.jsonl")
         if listings is None:
             print(f"scraping failed for search term - {st}")
             continue
         
         for supplier_listing in listings:
             pair = {
-                "match": match_pair(listing, supplier_listing),
+                "match": match_product_supplier_pair(listing, supplier_listing),
                 "usd_cost": toUSD(float(supplier_listing['price']), "1688"), # 1688 price is in RMB
                 "supplier_listing": supplier_listing
             }
             results.append(pair)
             
+    log_conversation(c, f"{run_dir}/term_generation_{listing['name']}_{current_date_time}.txt")
     return results
 
-def match_pair(listing: dict, against_listing: dict) -> Optional[bool]:
+def match_product_supplier_pair(listing: dict, against_listing: dict) -> Optional[bool]:
     assert set(["name", "image"]).issubset(set(listing.keys())), "listing should have name and image keys"
     assert set(["name", "image"]).issubset(set(against_listing.keys())), "against_listing should have name and image keys"
     
@@ -99,6 +111,7 @@ def match_pair(listing: dict, against_listing: dict) -> Optional[bool]:
     if result is None:
         return None
     
+    log_conversation(c, f"{run_dir}/matching_{against_listing['name']}_{listing['name']}.txt")    
     return "yes" in result.lower()
 
 def languageOf(source: str) -> str:
@@ -120,3 +133,10 @@ def is_valid_list_of(type : type, length: int) -> Callable[[str], bool]:
         except (ValueError, SyntaxError):
             return False
     return is_valid_list
+
+def log_conversation(c: Conversation, file_path: str):
+    # append to file path
+    with open(file_path, 'a') as f:
+        for (role, content) in c.transcript:
+            f.write(f"{role}: {content}\n")
+        f.write("\n\n\n")

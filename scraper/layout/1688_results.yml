@@ -17,6 +17,6 @@ products:
             xpath: null
             type: Link
         image:
-            css: 'div.img-container > div > a > img'
+            css: 'div.img-container img'
             xpath: null
             type: Image
