@@ -24,6 +24,11 @@ def scrape(keyword: str, source: str, max_results: int = 7, result_output: Optio
     assert source in sources, f"source should be one of {sources}"
         
     corpus = get_amazon_corpus(keyword) if source == "amazon" else get_1688_corpus(keyword)
+    
+    if corpus is None:
+        print(f"[tl scraper fn] failed to retrieve corpus from web page for {keyword} on {source}")
+        return None
+    
     e = e_amzn if source == "amazon" else e_1688
     result = e.extract(corpus)
     
