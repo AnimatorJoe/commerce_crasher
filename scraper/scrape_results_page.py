@@ -111,17 +111,12 @@ def scrape_with_driver(url: str, proxie: bool = False) -> Optional[str]:
             return None
         url = f"http://api.scraperapi.com?api_key={os.getenv('SCRAPER_API_KEY')}&url={url}"
 
-    # Launch browser
     try:
-        # Clearing cookies
         print("[driver] clearing page cookies")
         context.clear_cookies()
-        # Go to the specified URL
-        page.goto(url)
-        # Wait for 2 seconds
         print("[driver] waiting for page render")
+        page.goto(url)
         sleep(2)
-        # Get page HTML content
         print("[driver] downloading %s"%url)
         contents = page.content()
     except Exception as e:
