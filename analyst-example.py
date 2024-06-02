@@ -1,7 +1,4 @@
-from analyst import summarize_keyword_conditions
-from api.conversation import Conversation
+from analyst import summarize_keyword_conditions, run_dir
 
 c = summarize_keyword_conditions("iphone stand")
-
-for (role, content) in c.transcript:
-    print(f"{role}: {content}")
+c.log_conversation(f"{run_dir}/summary.txt")
