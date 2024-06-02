@@ -71,7 +71,7 @@ def get_amazon_corpus(keyword: str) -> Optional[str]:
         else:
             print("[get_amazon_corpus] rPage %s must have been blocked by Amazon as the status code was %d"%(url,r.status_code))
         
-        print("[get_amazon_corpus] rattempting to bypass with webdriver")
+        print("[get_amazon_corpus] re-attempting to bypass with webdriver")
         return scrape_with_driver(url)
     return r.text
     
