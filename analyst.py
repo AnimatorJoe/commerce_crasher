@@ -38,12 +38,17 @@ def summarize_keyword_conditions(keyword: str) -> Optional[Conversation]:
     return c   
 
 def generate_keyword_analytics(keyword: str) -> Optional[list]:
-    search_results = scrape(keyword, "amazon", result_output=f"{run_dir}/amazon_{current_date_time}_{keyword}.jsonl")
+    search_results = scrape(
+        keyword,
+        "amazon",
+        result_output=f"{run_dir}/amazon_{current_date_time}_{keyword}.jsonl",
+        corpus_output=f"{run_dir}/amazon_{current_date_time}_{keyword}.html"
+    )
     
     analytics = []
     
     for listing in search_results:
-        result = analyze_product(listing)
+        result = analyze_product_sourcing(listing)
         if result is None:
             analytics.append(None)
             continue
@@ -51,6 +56,7 @@ def generate_keyword_analytics(keyword: str) -> Optional[list]:
         average_cost = sum([pair['usd_cost'] for pair in result if pair['match']]) / len(result)
         listing_analytic = {
             "original_listing": listing,
+            "comparisons": result,
             "estimated_cost": average_cost,
             "estimated_margin": listing['price'] - average_cost / listing['price'],
         }
@@ -58,7 +64,7 @@ def generate_keyword_analytics(keyword: str) -> Optional[list]:
         
     return analytics
 
-def analyze_product(listing: str) -> Optional[list]:
+def analyze_product_sourcing(listing: str) -> Optional[list]:
     assert set(["name", "price", "image", "url"]).issubset(set(listing.keys())), "listing should have name and image keys"
     
     c = Conversation(instruction="please only answer each question with a python list of strings, no markdown")
@@ -80,7 +86,12 @@ def analyze_product(listing: str) -> Optional[list]:
     
     for st in search_terms:
         st_encoded = urllib.parse.quote(st.encode('gb2312'))
-        listings = scrape(st_encoded, "1688", result_output=f"{run_dir}/1688_{current_date_time}_{st}.jsonl")
+        listings = scrape(
+            st_encoded,
+            "1688",
+            result_output=f"{run_dir}/1688_{current_date_time}_{st}.jsonl",
+            corpus_output=f"{run_dir}/1688_{current_date_time}_{st}.html"
+        )
         if listings is None:
             print(f"scraping failed for search term - {st}")
             continue
@@ -101,6 +112,9 @@ def match_product_supplier_pair(listing: dict, against_listing: dict) -> Optiona
     assert set(["name", "image"]).issubset(set(against_listing.keys())), "against_listing should have name and image keys"
     
     c = Conversation(instruction="please answer with only yes or no")
+    
+    if against_listing["image"] is None: # TODO: support 1688 listings with videos instead of images
+        return None
     
     result = c.message_until_response_valid(
         lambda x: x.lower() in ["yes", "no"],

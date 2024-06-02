@@ -16,7 +16,7 @@ sources = ["amazon", "1688"]
 e_amzn = Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layout/amazon_results.yml"))
 e_1688 = Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layout/1688_results.yml"))
 
-def scrape(keyword: str, source: str, result_output: Optional[str] = None, corpus_output: Optional[str] = None) -> Optional[list]:
+def scrape(keyword: str, source: str, max_results: int = 7, result_output: Optional[str] = None, corpus_output: Optional[str] = None) -> Optional[list]:
     assert source in sources, f"source should be one of {sources}"
         
     corpus = get_amazon_corpus(keyword) if source == "amazon" else get_1688_corpus(keyword)
@@ -28,9 +28,11 @@ def scrape(keyword: str, source: str, result_output: Optional[str] = None, corpu
         print(result)
         return None
     
+    result = result['products'][:max_results]
+    
     if result_output:
         with open(result_output, 'w', encoding="utf-8") as outfile:
-            for product in result['products']:
+            for product in result:
                 json.dump(product, outfile, ensure_ascii=False)
                 outfile.write("\n")
     
@@ -38,7 +40,7 @@ def scrape(keyword: str, source: str, result_output: Optional[str] = None, corpu
         with open(corpus_output, 'w') as outfile:
             outfile.write(corpus)
     
-    return result['products']
+    return result
 
 def get_amazon_corpus(keyword: str) -> Optional[str]:
     headers = {
