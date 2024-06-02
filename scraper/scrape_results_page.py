@@ -82,10 +82,13 @@ def get_1688_corpus(keyword: str) -> Optional[str]:
     # cannot use get request because 1688 page renders with javascript
     page = scrape_with_driver(url)
     
-    extract = e_1688.extract(page) # TODO: have a better way to check if extraction will fail
-    if extract is None or extract['products'] is None:
-        print("[get_1688_corpus] products cannot be extracted from 1688 web page, retrying page load with proxy")
-        page = scrape_with_driver(url, proxie=True)
+    if page is not None:    
+        extract = e_1688.extract(page) # TODO: have a better way to check if extraction will fail
+        if extract['products'] is not None:
+            return page
+        
+    print("[get_1688_corpus] products cannot be extracted from 1688 web page, retrying page load with proxy")
+    page = scrape_with_driver(url, proxie=True)
     
     return page
 
