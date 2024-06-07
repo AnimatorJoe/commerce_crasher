@@ -1,0 +1,23 @@
+products:
+    css: div.space-offer-card-box
+    xpath: null
+    multiple: true
+    type: Text
+    children:
+        name:
+            css: div.title
+            xpath: null
+            type: Text
+        price:
+            css: div.price
+            xpath: null
+            type: Text
+        url:
+            css: 'div.mojar-element-image > a'
+            xpath: null
+            type: Link
+        image:
+            css: 'div.img-container div.img'
+            xpath: null
+            type: Attribute
+            attribute: style

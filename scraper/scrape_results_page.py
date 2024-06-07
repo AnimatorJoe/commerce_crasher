@@ -1,6 +1,7 @@
 import atexit
-import requests 
 import json
+import requests
+import re
 import os
 
 from time import sleep
@@ -16,11 +17,19 @@ sources = ["amazon", "1688"]
 
 e_amzn = Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layout/amazon_results.yml"))
 e_1688 = Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layout/1688_results.yml"))
+e_16882= Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layout/1688_results_image_search.yml"))
 
 p = sync_playwright().start()
 browser, context, page = None, None, None
 
-def scrape(keyword: str, source: str, max_results: int = 7, result_output: Optional[str] = None, corpus_output: Optional[str] = None) -> Optional[list]:
+def scrape( 
+    keyword: str,
+    source: str,
+    max_results: int = 7,
+    result_output: Optional[str] = None,
+    corpus_output: Optional[str] = None
+) -> Optional[list]:
+    
     assert source in sources, f"source should be one of {sources}"
         
     corpus = get_amazon_corpus(keyword) if source == "amazon" else get_1688_corpus(keyword)
@@ -28,6 +37,10 @@ def scrape(keyword: str, source: str, max_results: int = 7, result_output: Optio
     if corpus is None:
         print(f"[tl scraper fn] failed to retrieve corpus from web page for {keyword} on {source}")
         return None
+    
+    if corpus_output:
+        with open(corpus_output, 'w') as outfile:
+            outfile.write(corpus)
     
     e = e_amzn if source == "amazon" else e_1688
     result = e.extract(corpus)
@@ -45,12 +58,48 @@ def scrape(keyword: str, source: str, max_results: int = 7, result_output: Optio
                 json.dump(product, outfile, ensure_ascii=False)
                 outfile.write("\n")
     
+    return result
+
+def scrape_with_1688_image_search(
+    image_urls: list,
+    max_results: int = 20,
+    result_output: Optional[str] = None,
+    corpus_output: Optional[str] = None
+) -> Optional[str]:
+    corpus = get_1688_image_search_corpus(image_urls)
+    
+    if corpus is None:
+        print(f"[image scraper fn] failed to retrieve corpus from web page for images {image_urls}")
+        return None
+    
     if corpus_output:
         with open(corpus_output, 'w') as outfile:
             outfile.write(corpus)
     
+    result = e_16882.extract(corpus)
+    
+    if result is None or result['products'] is None:
+        print("[image scraper fn] extraction of products from web page failed, recieved the following result")
+        print(result)
+        return None
+    
+    result = result['products'][:max_results]
+    
+    for product in result:
+        attribute = product['image']
+        if attribute:
+            # in 1688 image search, each listing image is stored as a css attribute, extract it here
+            image_url = extract_url_from_css(attribute) 
+        product['image'] = image_url
+    
+    if result_output:
+        with open(result_output, 'w', encoding="utf-8") as outfile:
+            for product in result:
+                json.dump(product, outfile, ensure_ascii=False)
+                outfile.write("\n")
+    
     return result
-
+    
 def get_amazon_corpus(keyword: str) -> Optional[str]:
     headers = {
         'dnt': '1',
@@ -97,6 +146,47 @@ def get_1688_corpus(keyword: str) -> Optional[str]:
     
     return page
 
+def get_1688_image_search_corpus(image_urls: list) -> Optional[str]:
+    global browser, context, page
+        
+    if browser is None:
+        print("[scrape_1688_with_image_search] browser not initialized, initializing")
+        initialize_browser()
+
+    outputs = []
+    for i in range(len(image_urls)):
+        response = requests.get(image_urls[i])
+        output = f"image_{i}.jpg"
+        with open(output, 'wb') as file:
+            file.write(response.content)
+        outputs.append(output)
+        
+    page_content = None
+        
+    try:
+        print("[get_1688_image_search_corpus] navigating to 1688's search page")
+        page.goto("https://s.1688.com/selloffer/offer_search.htm?keywords=keyboard")
+        print("[get_1688_image_search_corpus] 1688 search page loaded")
+        sleep(2)
+
+        page.click("div.img-search-upload")
+        print("[get_1688_image_search_corpus] image upload initiated")
+        sleep(2)
+
+        page.set_input_files("input[type='file']", outputs)
+        print("[get_1688_image_search_corpus] input selected")
+        sleep(8)
+
+        print("[get_1688_image_search_corpus] downloading search results page")
+        page_content = page.content()
+        print("[get_1688_image_search_corpus] download complete")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return None
+    
+    return page_content
+
 def scrape_with_driver(url: str, proxie: bool = False) -> Optional[str]:
     global browser, context, page
 
@@ -104,11 +194,7 @@ def scrape_with_driver(url: str, proxie: bool = False) -> Optional[str]:
     
     if browser is None:
         print("[driver] browser not initialized, initializing")
-        # Launch browser
-        browser = p.chromium.launch()
-        context = browser.new_context()
-        page = context.new_page()
-        print("[driver] browser, context, and page initialized")
+        initialize_browser()
     
     if proxie:
         if not os.getenv('SCRAPER_API_KEY'):
@@ -129,8 +215,23 @@ def scrape_with_driver(url: str, proxie: bool = False) -> Optional[str]:
         print(e)
         
     return contents
-    
-    
+
+def extract_url_from_css(css_attr: str) -> Optional[str]:
+    pattern = r'url\("([^"]+)"\)'
+    m = re.search(pattern, css_attr)
+
+    if m:
+        url = m.group(1)
+        return url
+    else:
+        return None
+   
+def initialize_browser():
+    global browser, context, page
+    browser = p.chromium.launch(headless=False)
+    context = browser.new_context()
+    page = context.new_page()
+    print("[initialize_browser] browser, context, and page initialized")
     
 def exit_handler():
     print("application exiting")
