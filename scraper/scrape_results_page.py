@@ -65,7 +65,7 @@ def scrape_with_1688_image_search(
     max_results: int = 20,
     result_output: Optional[str] = None,
     corpus_output: Optional[str] = None
-) -> Optional[str]:
+) -> Optional[list]:
     corpus = get_1688_image_search_corpus(image_urls)
     
     if corpus is None:

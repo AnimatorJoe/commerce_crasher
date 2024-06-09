@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from api.conversation import Conversation
-from scraper.scrape_results_page import scrape
+from scraper.scrape_results_page import scrape, scrape_with_1688_image_search
 
 sources = ["amazon", "1688"]
 
@@ -13,7 +13,7 @@ current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 run_dir = f"runs_{current_date_time}"
 os.makedirs(run_dir, exist_ok=True)
 
-def summarize_keyword_conditions(keyword: str) -> Optional[Conversation]:
+def summarize_keyword_conditions(keyword: str) -> Conversation:
     c = Conversation(instruction="please answer in a short sentence and provide a reason")
     
     analytics = generate_keyword_analytics(keyword)
@@ -25,7 +25,8 @@ def summarize_keyword_conditions(keyword: str) -> Optional[Conversation]:
     for analytic in analytics:
         if analytic:
             ol = analytic['original_listing']
-            stringified_analytics += f"{ol['name']}, {ol['price']}, {ol['rating']}, {ol['reviews']}, {ol['purchases']}, {analytic['estimated_margin']}\n"
+            estimated_margin = analytic['estimated_margin'] if analytic['estimated_margin'] else "supplier not found, margin unknown"
+            stringified_analytics += f"{ol['name']}, {ol['price']}, {ol['rating']}, {ol['reviews']}, {ol['purchases']}, {estimated_margin}\n"
     
     c.message(
         message=(
@@ -51,24 +52,27 @@ def generate_keyword_analytics(keyword: str) -> Optional[list]:
     analytics = []
     
     for listing in search_results:
-        result = analyze_product_sourcing(listing)
+        result = analyze_product_sourcing_with_image_search(listing)
         if result is None or len(result) == 0:
             analytics.append(None)
             continue
         
-        average_cost = sum([pair['usd_cost'] for pair in result if pair['match']]) / len(result)
         listing_cost = float(listing['price'][1:])
+        cost_of_matches = [pair['usd_cost'] for pair in result if pair['match']]
+        
+        estimated_cost = sum(cost_of_matches) / len(cost_of_matches) if len(cost_of_matches) > 0 else None
+        estimated_margin = (listing_cost - estimated_cost) / listing_cost if estimated_cost else None
         listing_analytic = {
             "original_listing": listing,
             "comparisons": result,
-            "estimated_cost": average_cost,
-            "estimated_margin": listing_cost - average_cost / listing_cost,
+            "estimated_cost": estimated_cost,
+            "estimated_margin": estimated_margin,
         }
         analytics.append(listing_analytic)
         
     return analytics
 
-def analyze_product_sourcing(listing: dict, generate_report: bool = True) -> Optional[list]:
+def analyze_product_sourcing_with_keyword_search(listing: dict, generate_report: bool = True) -> Optional[list]:
     assert set(["name", "price", "image", "url"]).issubset(set(listing.keys())), "listing should have name and image keys"
     
     c = Conversation(instruction="answer only, no talking")
@@ -118,7 +122,6 @@ def analyze_product_sourcing(listing: dict, generate_report: bool = True) -> Opt
                 
             pair = {
                 "match": is_match,
-                "search_term": search_term,
                 "usd_cost": toUSD(float(supplier_listing['price']), "1688"), # 1688 price is in RMB
                 "supplier_listing": supplier_listing
             }
@@ -142,11 +145,66 @@ def analyze_product_sourcing(listing: dict, generate_report: bool = True) -> Opt
     c.log_conversation(f"{run_dir}/term_generation_{listing['name']}_{current_date_time}.txt")
     return results
 
+def analyze_product_sourcing_with_image_search(listing: dict, generate_report: bool = True) -> Optional[list]:
+    assert set(["name", "price", "image", "url"]).issubset(set(listing.keys())), "listing should have name and image keys"
+    
+    c = Conversation()
+    
+    listing_name = listing['name']
+    suggested_listings = scrape_with_1688_image_search(
+        image_urls=[listing["image"]],
+        max_results=13,
+        result_output=f"{run_dir}/1688_{current_date_time}_image_sr_{listing_name}.jsonl",
+        corpus_output=f"{run_dir}/1688_{current_date_time}_image_sr_{listing_name}.html"
+    )
+    
+    if suggested_listings is None:
+        print(f"image search failed for Amazon listing - {listing['name']}")
+        return None
+    
+    requirements_string = f"answer should be a python list of {len(suggested_listings)} booleans, no talking, no markdown"
+    evaluation = is_valid_list_of(bool, len(suggested_listings))
+    question_string = (
+        "the Amazon product\n"
+        f"{listing['name']}\n"
+        "has a thumbnail listed on Amazon attached as the first image below\n\n"
+        "in addition, I will include several products from 1688\n"
+        "their names are listed below and their corresponding thumbnails are attached in the same order\n"
+        "please answer with a list of booleans, where each boolean corresponds to whether the 1688 product can be sold as the Amazon product\n\n"
+    )
+    
+    for suggested_listing in suggested_listings:
+        question_string += f"{suggested_listing['name']}\n\n"
+    
+    result = c.message_until_response_valid(
+        valid=evaluation,
+        valid_criteria=requirements_string,
+        message=question_string,
+        images_urls=[listing['image']] + [listing['image'] for listing in suggested_listings]
+    )
+    
+    matches = ast.literal_eval(result)
+    
+    pairs = [
+        {
+            "match": is_match,
+            "usd_cost": toUSD(float(supplier_listing['price']), "1688"), # 1688 price is in RMB
+            "supplier_listing": supplier_listing
+        }
+        for is_match, supplier_listing in zip(matches, suggested_listings)
+    ]
+    
+    c.message("give a short reason for each answer")
+    
+    c.log_conversation(f"{run_dir}/image_search_{listing['name']}_{current_date_time}.txt")
+    
+    return pairs
+
 def match_product_supplier_pair(listing: dict, against_listing: dict) -> Optional[bool]:
     assert set(["name", "image"]).issubset(set(listing.keys())), "listing should have name and image keys"
     assert set(["name", "image"]).issubset(set(against_listing.keys())), "against_listing should have name and image keys"
     
-    c = Conversation(instruction="please answer with only yes or no")
+    c = Conversation()
     
     if against_listing["image"] is None: # TODO: support 1688 listings with videos instead of images
         return None
@@ -165,6 +223,7 @@ def match_product_supplier_pair(listing: dict, against_listing: dict) -> Optiona
     if result is None:
         return None
     
+    c.message("why?")
     c.log_conversation(f"{run_dir}/matching_against_{listing['name']}.txt")    
     return "yes" in result.lower()
 
@@ -176,11 +235,11 @@ def toUSD(amount:float, source: str) -> float:
     assert source in sources, f"source should be one of {sources}"
     return amount if source == "amazon" else round(amount * 0.15, 2)
     
-def is_valid_list_of(type : type, length: int) -> Callable[[str], bool]:
+def is_valid_list_of(expected_type : type, length: int) -> Callable[[str], bool]:
     def is_valid_list(string: str) -> bool:
         try:
             result = ast.literal_eval(string)
-            if isinstance(result, list) and all(isinstance(item, type) for item in result):
+            if isinstance(result, list) and all(isinstance(item, expected_type) for item in result):
                 return len(result) == length
             else:
                 return False

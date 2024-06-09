@@ -1,3 +1,4 @@
-# Optimization Ideas
+# Optimization/Improvement Ideas
 
-1. Reuse conversations.
+1. Ignore sponsored listings.
+2. Reuse conversations.
