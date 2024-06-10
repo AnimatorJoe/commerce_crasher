@@ -1,5 +1,6 @@
 import ast
 import os
+import re
 import urllib.parse
 from datetime import datetime
 from typing import Callable, Optional
@@ -10,7 +11,7 @@ from scraper.scrape_results_page import scrape, scrape_with_1688_image_search
 sources = ["amazon", "1688"]
 
 current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-run_dir = f"runs_{current_date_time}"
+run_dir = f"runs/run_{current_date_time}"
 os.makedirs(run_dir, exist_ok=True)
 
 def summarize_keyword_conditions(keyword: str) -> Conversation:
@@ -36,7 +37,7 @@ def summarize_keyword_conditions(keyword: str) -> Conversation:
         ),
         images_urls=[analytic['original_listing']['image'] for analytic in analytics if analytic is not None])
     
-    c.log_conversation(f"{run_dir}/summary_{keyword}_{current_date_time}.txt")
+    c.log_conversation(f"{run_dir}/summary_{clean_file_path(keyword)}_{current_date_time}.txt")
     
     return c   
 
@@ -142,7 +143,7 @@ def analyze_product_sourcing_with_keyword_search(listing: dict, generate_report:
             print(f"search term generation on attempt {attempt} failed for - {listing['name']}; skipping current attempt")
             continue
             
-    c.log_conversation(f"{run_dir}/term_generation_{listing['name']}_{current_date_time}.txt")
+    c.log_conversation(f"{run_dir}/term_generation_{clean_file_path(listing['name'])}_{current_date_time}.txt")
     return results
 
 def analyze_product_sourcing_with_image_search(listing: dict, generate_report: bool = True) -> Optional[list]:
@@ -196,7 +197,7 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
     
     c.message("give a short reason for each answer")
     
-    c.log_conversation(f"{run_dir}/image_search_{listing['name']}_{current_date_time}.txt")
+    c.log_conversation(f"{run_dir}/image_search_{clean_file_path(listing['name'])}_{current_date_time}.txt")
     
     return pairs
 
@@ -224,7 +225,7 @@ def match_product_supplier_pair(listing: dict, against_listing: dict) -> Optiona
         return None
     
     c.message("why?")
-    c.log_conversation(f"{run_dir}/matching_against_{listing['name']}.txt")    
+    c.log_conversation(f"{run_dir}/matching_against_{clean_file_path(listing['name'])}.txt")    
     return "yes" in result.lower()
 
 def languageOf(source: str) -> str:
@@ -246,3 +247,8 @@ def is_valid_list_of(expected_type : type, length: int) -> Callable[[str], bool]
         except (ValueError, SyntaxError):
             return False
     return is_valid_list
+
+def clean_file_path(file_path):
+    allowed_chars = re.compile(r'[^a-zA-Z0-9_.\\-]')
+    cleaned_path = allowed_chars.sub('_', file_path)
+    return cleaned_path

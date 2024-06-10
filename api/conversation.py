@@ -66,7 +66,7 @@ class Conversation:
         return None
     
     def log_conversation(self, file_path: str):
-        # append to file path
+        
         with open(file_path, 'a') as f:
             for message in self.transcript:
                 f.write(f"{message['role']}: {message['content']}\n")

@@ -125,8 +125,8 @@ def get_amazon_corpus(keyword: str) -> Optional[str]:
         else:
             print("[get_amazon_corpus] rPage %s must have been blocked by Amazon as the status code was %d"%(url,r.status_code))
         
-        print("[get_amazon_corpus] re-attempting to bypass with webdriver")
-        return scrape_with_driver(url)
+        print("[get_amazon_corpus] re-attempting to bypass with webdriver + proxy")
+        return scrape_with_driver(url, proxy=True)
     return r.text
     
 def get_1688_corpus(keyword: str) -> Optional[str]:
@@ -142,7 +142,7 @@ def get_1688_corpus(keyword: str) -> Optional[str]:
             return page
         
     print("[get_1688_corpus] products cannot be extracted from 1688 web page, retrying page load with proxy")
-    page = scrape_with_driver(url, proxie=True)
+    page = scrape_with_driver(url, proxy=True)
     
     return page
 
@@ -187,7 +187,7 @@ def get_1688_image_search_corpus(image_urls: list) -> Optional[str]:
     
     return page_content
 
-def scrape_with_driver(url: str, proxie: bool = False) -> Optional[str]:
+def scrape_with_driver(url: str, proxy: bool = False) -> Optional[str]:
     global browser, context, page
 
     contents = None
@@ -196,7 +196,7 @@ def scrape_with_driver(url: str, proxie: bool = False) -> Optional[str]:
         print("[driver] browser not initialized, initializing")
         initialize_browser()
     
-    if proxie:
+    if proxy:
         if not os.getenv('SCRAPER_API_KEY'):
             print("[driver] no scraper api key found, please set the SCRAPER_API_KEY environment variable")
             return None
