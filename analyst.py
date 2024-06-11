@@ -7,6 +7,7 @@ from typing import Callable, Optional
 
 from api.conversation import Conversation
 from scraper.scrape_results_page import scrape, scrape_with_1688_image_search
+from recorder import writeRuntimeState
 
 sources = ["amazon", "1688"]
 
@@ -14,7 +15,39 @@ current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 run_dir = f"runs/run_{current_date_time}"
 os.makedirs(run_dir, exist_ok=True)
 
-def summarize_keyword_conditions(keyword: str) -> Conversation:
+def search_term_exploration(term: str, recursions: int = 2, original_term: Optional[str] = None):
+    if recursions == -1:
+        return
+    
+    analysis = summarize_keyword_conditions(term)
+
+    if analysis is None:
+        print(f"analysis failed for keyword - {term}")
+        return None
+
+    branching_factor = 3
+    c = Conversation()
+    new_terms = c.message_until_response_valid(
+        valid=is_valid_list_of(str, branching_factor),
+        valid_criteria=f"answer should be a python list of {branching_factor} strings, no talking, no markdown",
+        message=("when searching for products on Amazon and corresponding supplier on 1688.com for the term"
+                f"{term}\n"
+                "the following conditions were found:\n"
+                f"{analysis['analyst_feedback']}\n"
+                "please provide a list of new search terms based on this analysis")
+    )
+    new_terms = ast.literal_eval(new_terms)
+    
+    analysis["followup_generation"] = c.transcript
+    analysis["original_term"] = original_term
+    analysis["term"] = term
+    
+    writeRuntimeState([analysis], f"{run_dir}/term_generation_{clean_file_path(term)}_{current_date_time}.yml")
+    
+    for new_term in new_terms:
+        search_term_exploration(new_term, recursions - 1, term)
+
+def summarize_keyword_conditions(keyword: str) -> Optional[dict]:
     c = Conversation(instruction="please answer in a short sentence and provide a reason")
     
     analytics = generate_keyword_analytics(keyword)
@@ -39,7 +72,10 @@ def summarize_keyword_conditions(keyword: str) -> Conversation:
     
     c.log_conversation(f"{run_dir}/summary_{clean_file_path(keyword)}_{current_date_time}.txt")
     
-    return c   
+    return {
+        "analytics": analytics,
+        "analyst_feedback": c.transcript
+    } 
 
 def generate_keyword_analytics(keyword: str) -> Optional[list]:
     search_results = scrape(
@@ -184,6 +220,10 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
         images_urls=[listing['image']] + [listing['image'] for listing in suggested_listings]
     )
     
+    if result is None:
+        print(f"matching failed for Amazon listing - {listing['name']}")
+        return None
+    
     matches = ast.literal_eval(result)
     
     pairs = [
@@ -235,7 +275,7 @@ def languageOf(source: str) -> str:
 def toUSD(amount:float, source: str) -> float:
     assert source in sources, f"source should be one of {sources}"
     return amount if source == "amazon" else round(amount * 0.15, 2)
-    
+
 def is_valid_list_of(expected_type : type, length: int) -> Callable[[str], bool]:
     def is_valid_list(string: str) -> bool:
         try:

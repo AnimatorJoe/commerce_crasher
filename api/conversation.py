@@ -14,7 +14,7 @@ class Conversation:
         self.log_convo = log_convo
         self.color_code = f"\033[38;2;{random.randint(0, 255)};{random.randint(0, 255)};{random.randint(0, 255)}m"
 
-    def message(self, message: str, images_urls: Optional[List[str]] = None) -> str:
+    def message(self, message: str, images_urls: Optional[List[str]] = None) -> Optional[str]:
         if self.log_convo:
             print(f"{self.color_code}USER:\n{message}\n(images attachments - {images_urls})\033[0m")
             
@@ -32,18 +32,24 @@ class Conversation:
             
         self.transcript.append(formatted_messages)
         
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=self.transcript
-        )
-        
-        result = response.choices[0].message.content
-        self.transcript.append({"role": "assistant", "content": result})
-        
-        if self.log_convo:
-            print(f"{self.color_code}ASSISTANT:\n{result}\033[0m")
+        try:
+            response = client.chat.completions.create(
+                model=self.model,
+                messages=self.transcript
+            )
             
-        return result
+            result = response.choices[0].message.content
+            self.transcript.append({"role": "assistant", "content": result})
+            
+            if self.log_convo:
+                print(f"{self.color_code}ASSISTANT:\n{result}\033[0m")
+                
+            return result
+        
+        except Exception as e:
+            print(f"An error occurred during conversation: {e}")
+            
+            return None
     
     def message_until_response_valid(
         self,
@@ -55,12 +61,12 @@ class Conversation:
     ) -> Optional[str]:
         result = self.message(f"{message}\nthe answer should meet this criteria - {valid_criteria}", images_urls)
         
-        if valid(result):
+        if result is not None and valid(result):
             return result
         
         for _ in range(max_retries):
             result = self.message(f"the answer did not meet this criteria - {valid_criteria}; please answer again")
-            if valid(result):
+            if result is not None and valid(result):
                 return result
         
         return None
