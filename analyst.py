@@ -67,7 +67,7 @@ def summarize_keyword_conditions(keyword: str) -> Optional[dict]:
     
     c.message(
         message=(
-            f"for the search term {keyword} on Amazon, the following products were found (name, price, rating, reviews, purchases, est. margin) with images listed in order of search results:\n"
+            f"for the search term {keyword} on Amazon, the following products were found (name, price, rating, reviews, purchases, est. profit margin) with images listed in order of search results:\n"
             f"{stringified_analytics}\n"
             "please provide a concise summary on the challenges of this market, whether it is over saturated, low demand, etc. and why"
         ),

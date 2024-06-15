@@ -78,6 +78,10 @@
       overflow-x: auto;
       white-space: nowrap;
     }
+    a {
+      text-decoration: none;
+      color: #333;
+    }
     table {
       border-collapse: collapse;
       width: 100%;
@@ -132,7 +136,7 @@
         let term = res.term;
         let originalTerm = res.original_term;
 
-        var rendering = "<h1>" + term + "</h1>";
+        var rendering = `<h1>${term} <a href="https://www.amazon.com/s?k=${term}" target="_blank">[visit]</a></h1>`;
         
         try {
           let summary = res.analyst_feedback[2];
@@ -153,7 +157,7 @@
             let listingContent = `
               <div class="productInfoBox">
                 <div class="text">
-                  <h3><a href="${listing.url}" target="_blank">${listingName}</a></h3>
+                  <h3><a href="https://amazon.com${listing.url}" target="_blank">${listingName}</a></h3>
                   <p>Price: ${listing.price}<p>
                   <p>Ratings: ${listing.rating}</p>
                   <p>Reviews: ${listing.reviews}</p>
