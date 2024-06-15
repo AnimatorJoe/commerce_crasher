@@ -1,4 +1,5 @@
 # Optimization/Improvement Ideas
 
 1. Ignore sponsored listings.
-2. Reuse conversations.
+2. Generate visualization from yaml.
+3. Reuse conversations.

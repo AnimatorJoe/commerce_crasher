@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script type="text/javascript" src="https://unpkg.com/vis-data@latest/peer/umd/vis-data.min.js"></script>
+  <script type="text/javascript" src="https://unpkg.com/vis-network@latest/peer/umd/vis-network.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/browserfs/2.0.0/browserfs.min.js"></script>
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="https://unpkg.com/vis-network/styles/vis-network.min.css" />
+  <style>
+    #mynetwork {
+      width: 800px;
+      height: 800px;
+      border: 1px solid black;
+    }
+    #infoWindow {
+      display: none;
+      position: absolute;
+      top: 50px;
+      left: 800px;
+      width: 800px;
+      padding: 15px;
+      border: 1px solid black;
+      background-color: white;
+      z-index: 1000;
+    }
+    #infoWindow .close {
+      cursor: pointer;
+      color: red;
+      float: right;
+    }
+    #amazonProductInfoBox {
+      font-size: 12px;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+    }
+    #amazonProductInfoBox img {
+      margin-left: 10px;
+      max-width: 30px;
+      max-height: 30px;
+    }
+  </style>
+</head>
+<body>
+  <p>select a yml file from one of the run folders under runs/</p>
+  <input type="file" id="fileInput">
+  <div id="mynetwork"></div>
+  <div id="infoWindow">
+    <span class="close" onclick="document.getElementById('infoWindow').style.display='none'">X</span>
+    <div id="infoContent"></div>
+  </div>
+
+  <script type="text/javascript">
+  var render = function (content) {
+    try {
+      var inputJson = jsyaml.load(content);
+
+      var termToId = {};
+      var nodesList = [];
+      var edgesList = []; 
+      
+      var lastId = 0;
+      
+      // parent nodes should come before children in list, but we do not assume this
+      for (let analystResult of inputJson) {
+        let term = analystResult.term;
+        let id = lastId++;
+        termToId[term] = id;
+      }
+
+      for (let res of inputJson) {
+        let term = res.term;
+        let originalTerm = res.original_term;
+
+        var rendering = "<h1>" + term + "</h1>";
+        
+        try {
+          let summary = res.analyst_feedback[2];
+          rendering += "<h2>summary</h2>";
+          rendering += "<div>" + marked.parse(summary.content) + "</div>";
+
+          rendering += "<h2>analytics</h2>";
+          rendering += "<table>"
+          for (let listing_analytics of res.analytics) {
+            let listing = listing_analytics.original_listing;
+      
+            rendering += "<tr>";
+            
+            // web scraped amazon url is suffix of amazon.com url
+            let roundedEstimatedCost = listing_analytics.estimated_cost.toFixed(2);
+            let estimatedMarginPercentage = (listing_analytics.estimated_margin * 100).toFixed(2);
+            let listingContent = `
+              <div class="amazonProductInfoBox">
+                <h3><a href="https://amazon.com${listing.url}">${listing.name}</a></h3>
+                <p>Price: ${listing.price} | Ratings: ${listing.rating} | Estimated Cost: $${roundedEstimatedCost} | Estimated Margin: ${estimatedMarginPercentage}%</p>
+                <img src="${listing.image}" />
+              </div>`;
+
+            rendering += "<td>" + listingContent + "</td>";
+
+
+            rendering += "</tr>";
+          }
+          rendering += "</table>";
+
+        } catch (err) {
+          rendering += "<p> rendering error </p>"
+          rendering += "<p> " + err.message + "</p>"
+        }
+
+        nodesList.push({ id: termToId[term], label: term, rendering: rendering });
+        edgesList.push({ from: termToId[originalTerm], to: termToId[term], arrows: 'to' });
+      }
+
+      var nodes = new vis.DataSet(nodesList);
+      var edges = new vis.DataSet(edgesList);
+
+      var container = document.getElementById("mynetwork");
+      var data = {
+        nodes: nodes,
+        edges: edges
+      };
+      var options = {};
+      var network = new vis.Network(container, data, options);
+    
+      network.on("click", function (params) {
+        if (params.nodes.length > 0) {
+          var nodeId = params.nodes[0];
+          var node = nodes.get(nodeId);
+          document.getElementById('infoContent').innerHTML = node.rendering;
+          document.getElementById('infoWindow').style.display = 'block';
+        }
+      });
+      }
+    catch (err) {
+      alert("error encountered: " + err.message);
+    }
+  }
+  
+  document.getElementById('fileInput').addEventListener('change', function(event) {
+    const file = event.target.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            render(e.target.result);
+        };
+        reader.readAsText(file);
+    } else {
+        document.getElementById('fileContent').textContent = 'No file selected';
+    }
+  });
+  </script>
+</body>
+</html>

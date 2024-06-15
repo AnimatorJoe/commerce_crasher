@@ -7,15 +7,18 @@ from typing import Callable, Optional
 
 from api.conversation import Conversation
 from scraper.scrape_results_page import scrape, scrape_with_1688_image_search
-from recorder import writeRuntimeState
+from recorder import writeRuntimeState, createVisualizationFrom
 
 sources = ["amazon", "1688"]
 
-current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M")
 run_dir = f"runs/run_{current_date_time}"
 os.makedirs(run_dir, exist_ok=True)
 
 def search_term_exploration(term: str, recursions: int = 2, original_term: Optional[str] = None):
+    if original_term is None:
+       run_dir = f"runs/run_{term}_{datetime.now().strftime('%Y-%m-%d_%H-%M')}" 
+        
     if recursions == -1:
         return
     
@@ -42,7 +45,7 @@ def search_term_exploration(term: str, recursions: int = 2, original_term: Optio
     analysis["original_term"] = original_term
     analysis["term"] = term
     
-    writeRuntimeState([analysis], f"{run_dir}/term_generation_{clean_file_path(term)}_{current_date_time}.yml")
+    writeRuntimeState([analysis], f"{run_dir}/term_search.yml")
     
     for new_term in new_terms:
         search_term_exploration(new_term, recursions - 1, term)
@@ -66,7 +69,7 @@ def summarize_keyword_conditions(keyword: str) -> Optional[dict]:
         message=(
             f"for the search term {keyword} on Amazon, the following products were found (name, price, rating, reviews, purchases, est. margin) with images listed in order of search results:\n"
             f"{stringified_analytics}\n"
-            "please provide a summary on the challenges of this market, whether it is over saturated, low demand, etc. and why"
+            "please provide a concise summary on the challenges of this market, whether it is over saturated, low demand, etc. and why"
         ),
         images_urls=[analytic['original_listing']['image'] for analytic in analytics if analytic is not None])
     
