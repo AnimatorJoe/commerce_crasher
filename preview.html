@@ -4,7 +4,6 @@
   <script type="text/javascript" src="https://unpkg.com/vis-data@latest/peer/umd/vis-data.min.js"></script>
   <script type="text/javascript" src="https://unpkg.com/vis-network@latest/peer/umd/vis-network.min.js"></script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/browserfs/2.0.0/browserfs.min.js"></script>
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" type="text/css" href="https://unpkg.com/vis-network/styles/vis-network.min.css" />
   <style>
@@ -17,33 +16,66 @@
       display: none;
       position: absolute;
       top: 50px;
-      left: 800px;
-      width: 800px;
+      left: 820px;
+      width: 600px;
+      max-height: 700px;
       padding: 15px;
       border: 1px solid black;
       background-color: white;
       z-index: 1000;
+      overflow-y: auto;
+      overflow-x: auto; /* Added for horizontal scrolling */
     }
-    #infoWindow .close {
-      cursor: pointer;
-      color: red;
-      float: right;
-    }
-    #amazonProductInfoBox {
-      font-size: 12px;
+    .productInfoBox {
+      font-size: 16px;
       display: flex;
-      flex-direction: row;
+      justify-content: space-between;
       align-items: center;
+      padding: 10px;
+      width: 250px; /* Set a width for the product info box */
     }
-    #amazonProductInfoBox img {
+    .productInfoBox .text {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+    }
+    .productInfoBox img {
       margin-left: 10px;
-      max-width: 30px;
-      max-height: 30px;
+      max-width: 90px;
+      max-height: 90px;
+    }
+    .productInfoBox h3 {
+      font-size: 18px;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .productInfoBox a {
+      text-decoration: none;
+      color: #333;
+    }
+    .productInfoBox a:hover {
+      text-decoration: underline;
+    }
+    .productInfoBox p {
+      font-size: 16px;
+      margin: 0;
+      padding: 0;
+    }
+    .match-true {
+      background-color: #d4edda; /* Green tint */
+    }
+    .match-false {
+      background-color: #f8d7da; /* Red tint */
+    }
+    td {
+      vertical-align: top; /* Ensure table cells align to the top */
+      width: 270px; /* Set a width for table cells */
     }
   </style>
 </head>
 <body>
-  <p>select a yml file from one of the run folders under runs/</p>
+  <p>Select a YML file from one of the run folders under runs/</p>
   <input type="file" id="fileInput">
   <div id="mynetwork"></div>
   <div id="infoWindow">
@@ -77,40 +109,60 @@
         
         try {
           let summary = res.analyst_feedback[2];
-          rendering += "<h2>summary</h2>";
+          rendering += "<h2>Summary</h2>";
           rendering += "<div>" + marked.parse(summary.content) + "</div>";
 
-          rendering += "<h2>analytics</h2>";
-          rendering += "<table>"
+          rendering += "<h2>Analytics</h2>";
+          rendering += "<table>";
           for (let listing_analytics of res.analytics) {
             let listing = listing_analytics.original_listing;
       
             rendering += "<tr>";
             
-            // web scraped amazon url is suffix of amazon.com url
-            let roundedEstimatedCost = listing_analytics.estimated_cost.toFixed(2);
-            let estimatedMarginPercentage = (listing_analytics.estimated_margin * 100).toFixed(2);
+            // Web scraped Amazon URL is suffix of amazon.com URL
+            let roundedEstimatedCost = listing_analytics.estimated_cost !== null ? `$${listing_analytics.estimated_cost.toFixed(2)}` : "supplier not found";
+            let estimatedMarginPercentage = listing_analytics.estimated_margin !== null ? `${(listing_analytics.estimated_margin * 100).toFixed(2)}%` : "supplier not found";
+            let listingName = listing.name.length < 50 ? listing.name : listing.name.substring(0, 47) + '[...]';
             let listingContent = `
-              <div class="amazonProductInfoBox">
-                <h3><a href="https://amazon.com${listing.url}">${listing.name}</a></h3>
-                <p>Price: ${listing.price} | Ratings: ${listing.rating} | Estimated Cost: $${roundedEstimatedCost} | Estimated Margin: ${estimatedMarginPercentage}%</p>
+              <div class="productInfoBox">
+                <div class="text">
+                  <h3><a href="https://amazon.com${listing.url}" target="_blank">${listingName}</a></h3>
+                  <p>Price: ${listing.price} | Ratings: ${listing.rating} | Estimated Cost: ${roundedEstimatedCost} | Estimated Margin: ${estimatedMarginPercentage}</p>
+                </div>
                 <img src="${listing.image}" />
               </div>`;
+            rendering += `<td>${listingContent}</td>`;
 
-            rendering += "<td>" + listingContent + "</td>";
-
-
+            for (let comparison of listing_analytics.comparisons) {
+              let altListing = comparison.supplier_listing;
+              let altListingName = altListing.name.length < 50 ? altListing.name : altListing.name.substring(0, 47) + '[...]';
+              let matchClass = comparison.match ? 'match-true' : 'match-false';
+            
+              let comparisonContent = `
+                <div class="productInfoBox ${matchClass}">
+                  <div class="text">
+                    <h3><a href="https://amazon.com${altListing.url}" target="_blank">${altListingName}</a></h3>
+                    <p>Price: $${altListing.price}</p>
+                    <p>Match: ${comparison.match}</p>
+                  </div>
+                  <img src="${altListing.image}">
+                </div>`;
+              rendering += `<td>${comparisonContent}</td>`;
+            }
+            
             rendering += "</tr>";
           }
           rendering += "</table>";
 
         } catch (err) {
-          rendering += "<p> rendering error </p>"
-          rendering += "<p> " + err.message + "</p>"
+          rendering += "<p>Rendering error</p>";
+          rendering += "<p>" + err.message + "</p>";
         }
 
         nodesList.push({ id: termToId[term], label: term, rendering: rendering });
-        edgesList.push({ from: termToId[originalTerm], to: termToId[term], arrows: 'to' });
+        if (termToId[originalTerm] !== undefined) {
+          edgesList.push({ from: termToId[originalTerm], to: termToId[term], arrows: 'to' });
+        }
       }
 
       var nodes = new vis.DataSet(nodesList);
@@ -132,22 +184,21 @@
           document.getElementById('infoWindow').style.display = 'block';
         }
       });
-      }
-    catch (err) {
-      alert("error encountered: " + err.message);
+    } catch (err) {
+      alert("Error encountered: " + err.message);
     }
   }
   
   document.getElementById('fileInput').addEventListener('change', function(event) {
     const file = event.target.files[0];
     if (file) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            render(e.target.result);
-        };
-        reader.readAsText(file);
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        render(e.target.result);
+      };
+      reader.readAsText(file);
     } else {
-        document.getElementById('fileContent').textContent = 'No file selected';
+      document.getElementById('fileContent').textContent = 'No file selected';
     }
   });
   </script>
