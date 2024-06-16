@@ -13,11 +13,12 @@ sources = ["amazon", "1688"]
 
 current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M")
 run_dir = f"runs/run_{current_date_time}"
-os.makedirs(run_dir, exist_ok=True)
 
 def search_term_exploration(term: str, recursions: int = 2, original_term: Optional[str] = None):
     if original_term is None:
-       run_dir = f"runs/run_{term}_{datetime.now().strftime('%Y-%m-%d_%H-%M')}" 
+        global run_dir
+        run_dir = f"runs/run_{term}_{datetime.now().strftime('%Y-%m-%d_%H-%M')}" 
+        os.makedirs(run_dir, exist_ok=True)
         
     if recursions == -1:
         return
@@ -82,9 +83,10 @@ def summarize_keyword_conditions(keyword: str) -> Optional[dict]:
 
 def generate_keyword_analytics(keyword: str) -> Optional[list]:
     search_results = scrape(
-        keyword,
-        "amazon",
+        keyword=keyword,
+        source="amazon",
         max_results=5,
+        remove_partially_extracted=True,
         result_output=f"{run_dir}/amazon_{current_date_time}_{clean_file_path(keyword)}.jsonl",
         corpus_output=f"{run_dir}/amazon_{current_date_time}_{clean_file_path(keyword)}.html"
     )
@@ -139,9 +141,10 @@ def analyze_product_sourcing_with_keyword_search(listing: dict, generate_report:
         st_encoded = urllib.parse.quote(search_term.encode('gb2312')) # 1688 uses gb2312 encoding for url parameters
         batch_size = 5
         listings = scrape(
-            st_encoded,
-            "1688",
+            keyword=st_encoded,
+            source="1688",
             max_results=batch_size,
+            remove_partially_extracted=True,
             result_output=f"{run_dir}/1688_{current_date_time}_{clean_file_path(search_term)}.jsonl",
             corpus_output=f"{run_dir}/1688_{current_date_time}_{clean_file_path(search_term)}.html"
         )
@@ -194,6 +197,7 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
     suggested_listings = scrape_with_1688_image_search(
         image_urls=[listing["image"]],
         max_results=13,
+        remove_partially_extracted=True,
         result_output=f"{run_dir}/1688_{current_date_time}_image_sr_{clean_file_path(listing_name)}.jsonl",
         corpus_output=f"{run_dir}/1688_{current_date_time}_image_sr_{clean_file_path(listing_name)}.html"
     )
@@ -201,7 +205,7 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
     if suggested_listings is None:
         print(f"image search failed for Amazon listing - {listing['name']}")
         return None
-    
+     
     requirements_string = f"answer should be a python list of {len(suggested_listings)} booleans, no talking, no markdown"
     evaluation = is_valid_list_of(bool, len(suggested_listings))
     question_string = (
@@ -212,7 +216,6 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
         "their names are listed below and their corresponding thumbnails are attached in the same order\n"
         "please answer with a list of booleans, where each boolean corresponds to whether the 1688 product can be sold as the Amazon product\n\n"
     )
-    
     for suggested_listing in suggested_listings:
         question_string += f"{suggested_listing['name']}\n\n"
     

@@ -14,7 +14,7 @@ SCRAPER_API_KEY=[optional scraperapi api key for proxies]
 2. Create venv and install dependencies
 
 ```
-python3 -m venv venv
+python3.9 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```

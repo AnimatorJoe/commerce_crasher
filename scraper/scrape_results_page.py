@@ -26,6 +26,8 @@ def scrape(
     keyword: str,
     source: str,
     max_results: int = 7,
+    remove_partially_extracted: bool = False,
+    remove_sponsored: bool = False,
     result_output: Optional[str] = None,
     corpus_output: Optional[str] = None
 ) -> Optional[list]:
@@ -43,14 +45,18 @@ def scrape(
             outfile.write(corpus)
     
     e = e_amzn if source == "amazon" else e_1688
-    result = e.extract(corpus)
-    
+    result = e.extract(corpus) # products field should always exist but set as None when extraction fails   
+
     if result is None or result['products'] is None:
         print("[tl scraper fn] extraction of products from web page failed, recieved the following result")
         print(result)
         return None
     
-    result = result['products'][:max_results]
+    assert type(result["products"]) == list, "products should be a list"
+    result = result['products']
+    if remove_partially_extracted:
+        result = keep_non_null_only(result)
+    result = result[:max_results] 
     
     if result_output:
         with open(result_output, 'w', encoding="utf-8") as outfile:
@@ -63,6 +69,8 @@ def scrape(
 def scrape_with_1688_image_search(
     image_urls: list,
     max_results: int = 20,
+    remove_partially_extracted: bool = False,
+    remove_sponsored: bool = False,
     result_output: Optional[str] = None,
     corpus_output: Optional[str] = None
 ) -> Optional[list]:
@@ -76,14 +84,18 @@ def scrape_with_1688_image_search(
         with open(corpus_output, 'w') as outfile:
             outfile.write(corpus)
     
-    result = e_16882.extract(corpus)
+    result = e_16882.extract(corpus) # products field should always exist but set as None when extraction fails
     
     if result is None or result['products'] is None:
         print("[image scraper fn] extraction of products from web page failed, recieved the following result")
         print(result)
         return None
     
-    result = result['products'][:max_results]
+    assert type(result["products"]) == list, "products should be a list"
+    result = result['products']
+    if remove_partially_extracted:
+        result = keep_non_null_only(result)
+    result = result[:max_results] 
     
     for product in result:
         attribute = product['image']
@@ -138,7 +150,7 @@ def get_1688_corpus(keyword: str) -> Optional[str]:
     
     if page is not None:    
         extract = e_1688.extract(page) # TODO: have a better way to check if extraction will fail
-        if extract['products'] is not None:
+        if extract is None or extract['products'] is not None:
             return page
         
     print("[get_1688_corpus] products cannot be extracted from 1688 web page, retrying page load with proxy")
@@ -215,6 +227,9 @@ def scrape_with_driver(url: str, proxy: bool = False) -> Optional[str]:
         print(e)
         
     return contents
+
+def keep_non_null_only(json_list: list) -> list:
+    return [obj for obj in json_list if all(value is not None for value in obj.values())]
 
 def extract_url_from_css(css_attr: str) -> Optional[str]:
     pattern = r'url\("([^"]+)"\)'
