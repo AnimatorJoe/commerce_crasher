@@ -1,5 +1,6 @@
 import atexit
 import json
+import random
 import requests
 import re
 import os
@@ -20,7 +21,7 @@ e_1688 = Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layou
 e_16882= Extractor.from_yaml_file(os.path.join(os.path.dirname(__file__), "layout/1688_results_image_search.yml"))
 
 p = sync_playwright().start()
-browser, context, page = None, None, None
+browser, context, page, proxy_on = None, None, None, None
 
 def scrape( 
     keyword: str,
@@ -138,7 +139,7 @@ def get_amazon_corpus(keyword: str) -> Optional[str]:
             print("[get_amazon_corpus] rPage %s must have been blocked by Amazon as the status code was %d"%(url,r.status_code))
         
         print("[get_amazon_corpus] re-attempting to bypass with webdriver + proxy")
-        return scrape_with_driver(url, proxy=True)
+        return download_with_driver(url, proxy_url=True)
     return r.text
     
 def get_1688_corpus(keyword: str) -> Optional[str]:
@@ -146,24 +147,72 @@ def get_1688_corpus(keyword: str) -> Optional[str]:
     print("[get_1688_corpus] retrieving corpus with url %s"%url)
     
     # cannot use get request because 1688 page renders with javascript
-    page = scrape_with_driver(url)
+    page = download_with_driver(url)
     
     if page is not None:    
         extract = e_1688.extract(page) # TODO: have a better way to check if extraction will fail
-        if extract is None or extract['products'] is not None:
+        if extract is not None and extract['products'] is not None:
             return page
         
     print("[get_1688_corpus] products cannot be extracted from 1688 web page, retrying page load with proxy")
-    page = scrape_with_driver(url, proxy=True)
+    page = download_with_driver(url, proxy_url=True)
     
     return page
 
 def get_1688_image_search_corpus(image_urls: list) -> Optional[str]:
-    global browser, context, page
+    page = download_with_1688_image_search(image_urls, proxy=True)
+    
+    if page is not None:
+        extract = e_16882.extract(page) # TODO: have a better way to check if extraction will fail
+        if extract is not None and extract['products'] is not None:
+            return page
         
+    print(f"[get_1688_image_search_corpus] products cannot be extracted from 1688 image search page with proxy_on={proxy_on}")
+    if not proxy_on:
+        print("[get_1688_image_search_corpus] proxy is off, retrying page load with proxy")
+        page = download_with_1688_image_search(image_urls, proxy=True)
+    
+    return page
+    
+def download_with_driver(url: str, proxy_url: bool = False, reset_cookies: bool = False) -> Optional[str]:
+    global browser, context, page
+
+    contents = None
+    
     if browser is None:
-        print("[scrape_1688_with_image_search] browser not initialized, initializing")
+        print("[driver] browser not initialized, initializing")
         initialize_browser()
+    
+    if proxy_url:
+        if not os.getenv('SCRAPER_API_KEY'):
+            print("[driver] no scraper api key found, please set the SCRAPER_API_KEY environment variable")
+            return None
+        url = f"http://api.scraperapi.com?api_key={os.getenv('SCRAPER_API_KEY')}&url={url}"
+
+    try:
+        if reset_cookies:
+            print("[driver] clearing page cookies")
+            context.clear_cookies()
+        print("[driver] waiting for page render")
+        page.goto(url)
+        sleep(2)
+        print("[driver] downloading %s"%url)
+        contents = page.content()
+    except Exception as e:
+        print("[driver] error occured while scraping page")
+        print(e)
+        
+    return contents
+
+def download_with_1688_image_search(image_urls: list, proxy: Optional[bool] = None, reset_cookies: bool = False) -> Optional[str]:
+    global browser, context, page, proxy_on
+    
+    if proxy is None:
+        proxy = proxy_on
+    
+    if browser is None or proxy_on != proxy:
+        print("[1688_image_search_driver] initializing browser")
+        initialize_browser(with_proxy=proxy)
 
     outputs = []
     for i in range(len(image_urls)):
@@ -176,57 +225,35 @@ def get_1688_image_search_corpus(image_urls: list) -> Optional[str]:
     page_content = None
         
     try:
-        print("[get_1688_image_search_corpus] navigating to 1688's search page")
-        page.goto("https://s.1688.com/selloffer/offer_search.htm?keywords=keyboard")
-        print("[get_1688_image_search_corpus] 1688 search page loaded")
-        sleep(2)
+        if reset_cookies:
+            print("[1688_image_search_driver] clearing page cookies")
+            context.clear_cookies()
+            
+        print("[1688_image_search_driver] navigating to 1688's search page")
+        page.goto("https://s.1688.com/selloffer/offer_search.htm?keywords=notepad")
+        print("[1688_image_search_driver] 1688 search page loaded")
+        sleep(3)
+        
+        print("[1688_image_search_driver] handling potential popup")
+        close_1688_popup()
 
         page.click("div.img-search-upload")
-        print("[get_1688_image_search_corpus] image upload initiated")
+        print("[1688_image_search_driver] image upload initiated")
         sleep(2)
 
         page.set_input_files("input[type='file']", outputs)
-        print("[get_1688_image_search_corpus] input selected")
-        sleep(8)
+        print("[1688_image_search_driver] input selected")
+        sleep(5)
 
-        print("[get_1688_image_search_corpus] downloading search results page")
+        print("[1688_image_search_driver] downloading search results page")
         page_content = page.content()
-        print("[get_1688_image_search_corpus] download complete")
+        print("[1688_image_search_driver] download complete")
 
     except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
+        print(f"[1688_image_search_driver] An error occurred: {e}")
+        return None 
     
     return page_content
-
-def scrape_with_driver(url: str, proxy: bool = False) -> Optional[str]:
-    global browser, context, page
-
-    contents = None
-    
-    if browser is None:
-        print("[driver] browser not initialized, initializing")
-        initialize_browser()
-    
-    if proxy:
-        if not os.getenv('SCRAPER_API_KEY'):
-            print("[driver] no scraper api key found, please set the SCRAPER_API_KEY environment variable")
-            return None
-        url = f"http://api.scraperapi.com?api_key={os.getenv('SCRAPER_API_KEY')}&url={url}"
-
-    try:
-        print("[driver] clearing page cookies")
-        context.clear_cookies()
-        print("[driver] waiting for page render")
-        page.goto(url)
-        sleep(2)
-        print("[driver] downloading %s"%url)
-        contents = page.content()
-    except Exception as e:
-        print("[driver] error occured while scraping page")
-        print(e)
-        
-    return contents
 
 def keep_non_null_only(json_list: list) -> list:
     return [obj for obj in json_list if all(value is not None for value in obj.values())]
@@ -240,19 +267,70 @@ def extract_url_from_css(css_attr: str) -> Optional[str]:
         return url
     else:
         return None
+
+def close_1688_popup():
+    # sometimes, 1688 will display a popup to block webscrapers (this can be closed by pressing the button with class 'baxia-dialog-close')
+    # since the exact conditions for the popup is unpredictable, this function is called whenever it is likely to appear
+    try:
+        page.click(".baxia-dialog-close")
+        print("[close_1688_popup] popup closed")
+    except Exception as e:
+        print(f"[close_1688_popup] error closing popup: {e}")
+
+def initialize_browser(with_proxy: bool = False):
+    global browser, context, page, proxy_on
+
+    userAgentStrings = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.2227.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.3497.92 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+    ]
+    
+    proxy_on = with_proxy and (os.getenv('SCRAPER_API_KEY') is not None)
+    if with_proxy and not proxy_on:
+        print("[initialize_browser] no scraper api key found, please set the SCRAPER_API_KEY environment variable; browser initializing without proxy...")
+    
+    browser = (
+        p.chromium.launch(headless=False, proxy={
+            # "server": f"http://scraperapi:{os.getenv('SCRAPER_API_KEY')}@proxy-server.scraperapi.com:8001",
+            # "username": "scraperapi",
+            # "password": os.getenv('SCRAPER_API_KEY')
+            "server": "http://134.195.156.211:3128",
+        })
+        if proxy_on
+        else p.chromium.launch(headless=False)
+    )
+    
+    context = browser.new_context(
+        user_agent=random.choice(userAgentStrings), 
+        ignore_https_errors=True
+    )
+    context.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', {get: () => undefined})
+        const get_param = (module, param) => {
+            return Object.values(module._nodeModulesPolyfillHeaders)[0][param];
+        }
+        Object.defineProperty(window, 'RTCPeerConnection', {
+            value: get_param(window.RTCPeerConnection, 'mozRTCPeerConnection')
+        });
+        Object.defineProperty(window, 'RTCSessionDescription', {
+            value: get_param(window.RTCSessionDescription, 'mozRTCSessionDescription')
+        });
+    """)
+    context.set_default_timeout(6000)
    
-def initialize_browser():
-    global browser, context, page
-    browser = p.chromium.launch(headless=False)
-    context = browser.new_context()
     page = context.new_page()
-    print("[initialize_browser] browser, context, and page initialized")
+   
+    print(f"[initialize_browser] browser, context, and page initialized with proxy_on={proxy_on}")
     
 def exit_handler():
     print("application exiting")
     if browser is not None:
         print("closing browser")
-        browser.close()
-    p.stop()
+    #     browser.close()
+    # p.stop()
+    while True:
+        pass
 
 atexit.register(exit_handler)

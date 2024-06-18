@@ -107,6 +107,7 @@
 </head>
 <body>
   <p>Select a YML file from one of the run folders under runs/</p>
+  <p>no file selected</p>
   <input type="file" id="fileInput">
   <div id="mynetwork"></div>
   <div id="infoWindow">
@@ -115,7 +116,10 @@
   </div>
 
   <script type="text/javascript">
-  var render = function (content) {
+  let previousContent = "";
+  let fileReaderInterval;
+
+  const render = function(content) {
     try {
       var inputJson = jsyaml.load(content);
 
@@ -212,7 +216,7 @@
       var options = {};
       var network = new vis.Network(container, data, options);
     
-      network.on("click", function (params) {
+      network.on("click", function(params) {
         if (params.nodes.length > 0) {
           var nodeId = params.nodes[0];
           var node = nodes.get(nodeId);
@@ -224,13 +228,30 @@
       alert("Error encountered: " + err.message);
     }
   }
+
+  const startFileMonitoring = (file) => {
+    clearInterval(fileReaderInterval); // Clear any previous interval
+    fileReaderInterval = setInterval(() => {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const currentContent = e.target.result;
+        if (previousContent !== currentContent) {
+          previousContent = currentContent;
+          render(currentContent);
+        }
+      };
+      reader.readAsText(file);
+    }, 5000);
+  };
   
   document.getElementById('fileInput').addEventListener('change', function(event) {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = function(e) {
-        render(e.target.result);
+        previousContent = e.target.result;
+        render(previousContent);
+        startFileMonitoring(file);
       };
       reader.readAsText(file);
     } else {

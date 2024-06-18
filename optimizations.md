@@ -1,5 +1,7 @@
 # Optimization/Improvement Ideas
 
 1. Ignore sponsored listings.
-2. Generate visualization from yaml.
-3. Reuse conversations.
+2. Support proxy on webdriver.
+3. Prompt tune for summary and keyword suggestions analyst should also find next keywords.
+4. Be able to load conversations (for prompt-tunning).
+5. Reuse conversations.

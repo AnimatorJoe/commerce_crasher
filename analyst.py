@@ -14,7 +14,7 @@ sources = ["amazon", "1688"]
 current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M")
 run_dir = f"runs/run_{current_date_time}"
 
-def search_term_exploration(term: str, recursions: int = 2, original_term: Optional[str] = None):
+def search_term_exploration(term: str, recursions: int = 2, original_term: Optional[str] = None, terms_so_far: Optional[set] = set()):
     if original_term is None:
         global run_dir
         run_dir = f"runs/run_{term}_{datetime.now().strftime('%Y-%m-%d_%H-%M')}" 
@@ -30,10 +30,11 @@ def search_term_exploration(term: str, recursions: int = 2, original_term: Optio
         return None
 
     branching_factor = 3
+    valid = lambda x: is_valid_list_of(str, branching_factor)(x) and all(term not in terms_so_far for term in ast.literal_eval(x))
     c = Conversation()
     new_terms = c.message_until_response_valid(
-        valid=is_valid_list_of(str, branching_factor),
-        valid_criteria=f"answer should be a python list of {branching_factor} strings, no talking, no markdown",
+        valid=valid,
+        valid_criteria=f"answer should be a python list of {branching_factor} strings not including any elemet of {terms_so_far}, no talking, no markdown",
         message=("when searching for products on Amazon and corresponding supplier on 1688.com for the term"
                 f"{term}\n"
                 "the following conditions were found:\n"
@@ -41,7 +42,8 @@ def search_term_exploration(term: str, recursions: int = 2, original_term: Optio
                 "please provide a list of new search terms based on this analysis")
     )
     new_terms = ast.literal_eval(new_terms)
-    
+    terms_so_far.update(new_terms)
+     
     analysis["followup_generation"] = c.transcript
     analysis["original_term"] = original_term
     analysis["term"] = term
@@ -49,7 +51,7 @@ def search_term_exploration(term: str, recursions: int = 2, original_term: Optio
     writeRuntimeState([analysis], f"{run_dir}/term_search.yml")
     
     for new_term in new_terms:
-        search_term_exploration(new_term, recursions - 1, term)
+        search_term_exploration(new_term, recursions - 1, term, terms_so_far)
 
 def summarize_keyword_conditions(keyword: str) -> Optional[dict]:
     c = Conversation(instruction="please answer in a short sentence and provide a reason")
