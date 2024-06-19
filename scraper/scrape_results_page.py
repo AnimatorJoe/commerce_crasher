@@ -238,13 +238,14 @@ def download_with_1688_image_search(image_urls: list, proxy: Optional[bool] = No
             print("[1688_image_search_driver] clearing page cookies")
             context.clear_cookies()
             
-        print("[1688_image_search_driver] navigating to 1688's search page")
-        page.goto("https://s.1688.com/selloffer/offer_search.htm?keywords=notepad")
-        print("[1688_image_search_driver] 1688 search page loaded")
-        sleep(3)
+        if "s.1688.com/selloffer/offer_search.htm" not in page.url and "s.1688.com/youyuan/index.htm" not in page.url:
+            print("[1688_image_search_driver] navigating to 1688's search page")
+            page.goto("https://s.1688.com/selloffer/offer_search.htm?keywords=notepad")
+            print("[1688_image_search_driver] 1688 search page loaded")
+            sleep(3)
         
-        print("[1688_image_search_driver] handling potential popup")
-        close_1688_popup()
+            print("[1688_image_search_driver] handling potential popup")
+            try_closing_1688_popup()
 
         page.click("div.img-search-upload")
         print("[1688_image_search_driver] image upload initiated")
@@ -252,8 +253,12 @@ def download_with_1688_image_search(image_urls: list, proxy: Optional[bool] = No
 
         page.set_input_files("input[type='file']", outputs)
         print("[1688_image_search_driver] input selected")
+        sleep(3)
+        
+        page.wait_for_load_state("load")
+        print("[1688_image_search_driver] image search page loaded")
         sleep(5)
-
+        
         print("[1688_image_search_driver] downloading search results page")
         page_content = page.content()
         print("[1688_image_search_driver] download complete")
@@ -309,6 +314,8 @@ def initialize_browser(with_proxy: bool = False):
     context.set_default_timeout(300000)
    
     page = context.new_page()
+    
+    sleep(3)
    
     print(f"[initialize_browser] browser, context, and page initialized with proxy_on={proxy_on}")
 
@@ -367,14 +374,14 @@ def extract_url_from_css(css_attr: str) -> Optional[str]:
     else:
         return None
 
-def close_1688_popup():
+def try_closing_1688_popup():
     # sometimes, 1688 will display a popup to block webscrapers (this can be closed by pressing the button with class 'baxia-dialog-close')
     # since the exact conditions for the popup is unpredictable, this function is called whenever it is likely to appear
     try:
         page.click(".baxia-dialog-close", timeout=6000)
         print("[close_1688_popup] popup closed")
     except Exception as e:
-        print(f"[close_1688_popup] popup close action failed: {e}") 
+        print(f"[close_1688_popup] popup close action failed (possibly not present): {e}") 
 
 def call_until_no_exception(
     n: int,

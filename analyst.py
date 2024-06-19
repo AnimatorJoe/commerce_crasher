@@ -90,7 +90,7 @@ def generate_keyword_analytics(keyword: str) -> Optional[list]:
         max_results=5,
         remove_partially_extracted=True,
         result_output=f"{run_dir}/amazon_{current_date_time}_{clean_file_path(keyword)}.jsonl",
-        corpus_output=f"{run_dir}/amazon_{current_date_time}_{clean_file_path(keyword)}.html"
+        # corpus_output=f"{run_dir}/amazon_{current_date_time}_{clean_file_path(keyword)}.html"
     )
     
     analytics = []
@@ -98,7 +98,12 @@ def generate_keyword_analytics(keyword: str) -> Optional[list]:
     for listing in search_results:
         result = analyze_product_sourcing_with_image_search(listing)
         if result is None or len(result) == 0:
-            analytics.append(None)
+            analytics.append({
+                "original_listing": listing,
+                "comparisons": [],
+                "estimated_cost": None,
+                "estimated_margin": None,
+            })
             continue
         
         listing_cost = float(listing['price'][1:])
@@ -148,7 +153,7 @@ def analyze_product_sourcing_with_keyword_search(listing: dict, generate_report:
             max_results=batch_size,
             remove_partially_extracted=True,
             result_output=f"{run_dir}/1688_{current_date_time}_{clean_file_path(search_term)}.jsonl",
-            corpus_output=f"{run_dir}/1688_{current_date_time}_{clean_file_path(search_term)}.html"
+            # corpus_output=f"{run_dir}/1688_{current_date_time}_{clean_file_path(search_term)}.html"
         )
         
         if listings is None:
@@ -201,7 +206,7 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
         max_results=13,
         remove_partially_extracted=True,
         result_output=f"{run_dir}/1688_{current_date_time}_image_sr_{clean_file_path(listing_name)}.jsonl",
-        corpus_output=f"{run_dir}/1688_{current_date_time}_image_sr_{clean_file_path(listing_name)}.html"
+        # corpus_output=f"{run_dir}/1688_{current_date_time}_image_sr_{clean_file_path(listing_name)}.html"
     )
     
     if suggested_listings is None:

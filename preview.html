@@ -150,6 +150,7 @@
           rendering += "<h2>Analytics</h2>";
           rendering += "<div class='table-container'><table>";
           for (let listing_analytics of res.analytics) {
+            if (listing_analytics === null) { continue; }
             let listing = listing_analytics.original_listing;
       
             rendering += "<tr>";
@@ -174,6 +175,7 @@
 
             var index = 1;
             for (let comparison of listing_analytics.comparisons) {
+              if (comparison === null) { continue; }
               let altListing = comparison.supplier_listing;
               let altListingName = altListing.name.length < 50 ? altListing.name : altListing.name.substring(0, 47) + '[...]';
               let matchClass = comparison.match ? 'match-true' : 'match-false';
