@@ -1,4 +1,5 @@
 selectorlib
 requests
 playwright
+beautifulsoup4
 openai

@@ -6,10 +6,11 @@ import re
 import os
 
 from time import sleep
-from typing import Optional
+from typing import Optional, Callable, Any
 
-from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from playwright.sync_api import sync_playwright
 from selectorlib import Extractor
 
 load_dotenv()
@@ -160,7 +161,7 @@ def get_1688_corpus(keyword: str) -> Optional[str]:
     return page
 
 def get_1688_image_search_corpus(image_urls: list) -> Optional[str]:
-    page = download_with_1688_image_search(image_urls, proxy=True)
+    page = download_with_1688_image_search(image_urls)
     
     if page is not None:
         extract = e_16882.extract(page) # TODO: have a better way to check if extraction will fail
@@ -168,9 +169,17 @@ def get_1688_image_search_corpus(image_urls: list) -> Optional[str]:
             return page
         
     print(f"[get_1688_image_search_corpus] products cannot be extracted from 1688 image search page with proxy_on={proxy_on}")
-    if not proxy_on:
-        print("[get_1688_image_search_corpus] proxy is off, retrying page load with proxy")
-        page = download_with_1688_image_search(image_urls, proxy=True)
+    # if not proxy_on:
+    #     print("[get_1688_image_search_corpus] proxy is off, retrying page load with proxy")
+    #     page = call_until_not_exception_or_none(
+    #         n=7,
+    #         func=lambda: download_with_1688_image_search(image_urls, proxy=True),
+    #         none_handler=lambda attempt: (
+    #             print(f"[get_1688_image_search_corpus] page download returned None on attempt {attempt}, retrying with new proxy"),
+    #             close_browser_instance(),
+    #             initialize_browser(with_proxy=True)
+    #         )
+    #     )
     
     return page
     
@@ -255,28 +264,6 @@ def download_with_1688_image_search(image_urls: list, proxy: Optional[bool] = No
     
     return page_content
 
-def keep_non_null_only(json_list: list) -> list:
-    return [obj for obj in json_list if all(value is not None for value in obj.values())]
-
-def extract_url_from_css(css_attr: str) -> Optional[str]:
-    pattern = r'url\("([^"]+)"\)'
-    m = re.search(pattern, css_attr)
-
-    if m:
-        url = m.group(1)
-        return url
-    else:
-        return None
-
-def close_1688_popup():
-    # sometimes, 1688 will display a popup to block webscrapers (this can be closed by pressing the button with class 'baxia-dialog-close')
-    # since the exact conditions for the popup is unpredictable, this function is called whenever it is likely to appear
-    try:
-        page.click(".baxia-dialog-close")
-        print("[close_1688_popup] popup closed")
-    except Exception as e:
-        print(f"[close_1688_popup] error closing popup: {e}")
-
 def initialize_browser(with_proxy: bool = False):
     global browser, context, page, proxy_on
 
@@ -286,17 +273,18 @@ def initialize_browser(with_proxy: bool = False):
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.3497.92 Safari/537.36',
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
     ]
-    
-    proxy_on = with_proxy and (os.getenv('SCRAPER_API_KEY') is not None)
+
+    proxy_address = None
+    if with_proxy:
+        proxy_address = call_until_not_exception_or_none(3, get_free_proxy_2)
+    proxy_on = proxy_address is not None
+
     if with_proxy and not proxy_on:
-        print("[initialize_browser] no scraper api key found, please set the SCRAPER_API_KEY environment variable; browser initializing without proxy...")
+        print("[initialize_browser] could not retrieve proxy, proceeding without proxy")
     
     browser = (
         p.chromium.launch(headless=False, proxy={
-            # "server": f"http://scraperapi:{os.getenv('SCRAPER_API_KEY')}@proxy-server.scraperapi.com:8001",
-            # "username": "scraperapi",
-            # "password": os.getenv('SCRAPER_API_KEY')
-            "server": "http://134.195.156.211:3128",
+            "server": proxy_address,
         })
         if proxy_on
         else p.chromium.launch(headless=False)
@@ -318,19 +306,124 @@ def initialize_browser(with_proxy: bool = False):
             value: get_param(window.RTCSessionDescription, 'mozRTCSessionDescription')
         });
     """)
-    context.set_default_timeout(6000)
+    context.set_default_timeout(300000)
    
     page = context.new_page()
    
     print(f"[initialize_browser] browser, context, and page initialized with proxy_on={proxy_on}")
+
+def get_free_proxy() -> Optional[str]:
+    if not hasattr(get_free_proxy, "proxies"):
+        get_free_proxy.proxies = []
     
+    if not get_free_proxy.proxies:
+        url = "https://api.proxyscrape.com/v3/free-proxy-list/get?request=displayproxies&country=us&proxy_format=protocolipport&format=text&timeout=2000"
+        
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            get_free_proxy.proxies = [proxy.strip() for proxy in response.text.split('\n') if proxy.strip()]
+        
+        except requests.RequestException as e:
+            print(f"[get_free_proxy] An error occurred when downwloading proxy list: {e}")
+            return None
+    
+    if get_free_proxy.proxies:
+        proxy = random.choice(get_free_proxy.proxies)
+        print(f"[get_free_proxy] selected proxy {proxy}")
+        return proxy
+    else:
+        return None 
+    
+def get_free_proxy_2() -> Optional[str]:
+    if not hasattr(get_free_proxy_2, "proxies"):
+        url = "https://free-proxy-list.net/anonymous-proxy.html"
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        table = soup.find('table')
+        rows = table.tbody.find_all('tr')
+
+        get_free_proxy_2.proxies = []
+        for row in rows:
+            cells = row.find_all('td')
+            ip = cells[0].text
+            port = cells[1].text
+            get_free_proxy_2.proxies.append(f"{ip}:{port}")
+   
+    proxy = random.choice(get_free_proxy_2.proxies)
+    print(f"[get_free_proxy_2] selected proxy {proxy}")
+    return proxy 
+
+def keep_non_null_only(json_list: list) -> list:
+    return [obj for obj in json_list if all(value is not None for value in obj.values())]
+
+def extract_url_from_css(css_attr: str) -> Optional[str]:
+    pattern = r'url\("([^"]+)"\)'
+    m = re.search(pattern, css_attr)
+
+    if m:
+        url = m.group(1)
+        return url
+    else:
+        return None
+
+def close_1688_popup():
+    # sometimes, 1688 will display a popup to block webscrapers (this can be closed by pressing the button with class 'baxia-dialog-close')
+    # since the exact conditions for the popup is unpredictable, this function is called whenever it is likely to appear
+    try:
+        page.click(".baxia-dialog-close", timeout=6000)
+        print("[close_1688_popup] popup closed")
+    except Exception as e:
+        print(f"[close_1688_popup] popup close action failed: {e}") 
+
+def call_until_no_exception(
+    n: int,
+    func: Callable[[], Any],
+    handler: Optional[Callable[[Exception, int], None]] = None
+) -> Any:
+    for attempt in range(n):
+        try:
+            return func()
+        except Exception as e:
+            if handler:
+                handler(e, attempt + 1)
+            else:
+                print(f"[{func.__name__}] attempt {attempt + 1} failed: {e}")
+    return None
+
+def call_until_not_exception_or_none(
+    n: int,
+    func: Callable[[], Any],
+    error_handler: Optional[Callable[[Exception, int], None]] = None,
+    none_handler: Optional[Callable[[int], None]] = None
+) -> Optional[Any]:
+    for attempt in range(n):
+        try:
+            result = func()
+            if result is not None:
+                return result
+            else:
+                if none_handler:
+                    none_handler(attempt + 1)
+                else: 
+                    print(f"[{func.__name__}] returned None on attempt {attempt + 1}")
+        except Exception as e:
+            if error_handler:
+                error_handler(e, attempt + 1)
+            else:
+                print(f"[{func.__name__}] failed on attempt {attempt + 1}: {e}")
+    return None
+
+def close_browser_instance():
+    global browser, context, page, proxy_on
+    if browser is not None:
+        print("[close_browser_instance] closing browser")
+        browser.close()
+    browser, context, page, proxy_on = None, None, None, None
+
 def exit_handler():
     print("application exiting")
-    if browser is not None:
-        print("closing browser")
-    #     browser.close()
-    # p.stop()
-    while True:
-        pass
+    close_browser_instance()
+    p.stop()
 
 atexit.register(exit_handler)
