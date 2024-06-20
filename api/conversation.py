@@ -1,4 +1,5 @@
 import random
+import yaml
 from typing import Callable, List, Optional
 
 from openai import OpenAI
@@ -13,6 +14,14 @@ class Conversation:
         self.transcript = [{"role": "system", "content": instruction}] if instruction else []
         self.log_convo = log_convo
         self.color_code = f"\033[38;2;{random.randint(0, 255)};{random.randint(0, 255)};{random.randint(0, 255)}m"
+
+    def __init__(self, transcript: list, model: str = "gpt-4o", log_convo: bool = True):
+        self.__init__(model=model, log_convo=log_convo)
+        self.transcript = transcript
+
+    def __init__(self, transcript_path: str, model: str = "gpt-4o", log_convo: bool = True):
+        data = yaml.safe_load(open(transcript_path, "r"))
+        self.__init__(self, transcript=data, model=model, log_convo=log_convo)
 
     def message(self, message: str, images_urls: Optional[List[str]] = None) -> Optional[str]:
         if self.log_convo:
@@ -72,8 +81,5 @@ class Conversation:
         return None
     
     def log_conversation(self, file_path: str):
-        with open(file_path, 'a') as f:
-            for message in self.transcript:
-                f.write(f"{message['role']}: {message['content']}\n")
-            f.write("\n")
-            f.close()
+        with open(file_path, "a", encoding="utf-8") as file:
+            yaml.dump(self.transcript, file, allow_unicode=True)

@@ -7,7 +7,7 @@ from typing import Callable, Optional
 
 from api.conversation import Conversation
 from scraper.scrape_results_page import scrape, scrape_with_1688_image_search
-from recorder import writeRuntimeState, createVisualizationFrom
+from recorder import writeRuntimeState 
 
 sources = ["amazon", "1688"]
 
@@ -23,7 +23,7 @@ def search_term_exploration(term: str, recursions: int = 2, original_term: Optio
     if recursions == -1:
         return
     
-    analysis = summarize_keyword_conditions(term)
+    analysis = analyze_keyword_conditions(term)
 
     if analysis is None:
         print(f"analysis failed for keyword - {term}")
@@ -53,7 +53,7 @@ def search_term_exploration(term: str, recursions: int = 2, original_term: Optio
     for new_term in new_terms:
         search_term_exploration(new_term, recursions - 1, term, terms_so_far)
 
-def summarize_keyword_conditions(keyword: str) -> Optional[dict]:
+def analyze_keyword_conditions(keyword: str) -> Optional[dict]:
     c = Conversation(instruction="please answer in a short sentence and provide a reason")
     
     analytics = generate_keyword_analytics(keyword)
@@ -72,11 +72,11 @@ def summarize_keyword_conditions(keyword: str) -> Optional[dict]:
         message=(
             f"for the search term {keyword} on Amazon, the following products were found (name, price, rating, reviews, purchases, est. profit margin) with images listed in order of search results:\n"
             f"{stringified_analytics}\n"
-            "please provide a concise summary on the challenges of this market, whether it is over saturated, low demand, etc. and why"
+            "please provide a summary on the challenges of this market, whether it is over saturated, low demand, etc. and why"
         ),
         images_urls=[analytic['original_listing']['image'] for analytic in analytics if analytic is not None])
     
-    c.log_conversation(f"{run_dir}/summary_{clean_file_path(keyword)}_{current_date_time}.txt")
+    c.log_conversation(f"{run_dir}/summary_{clean_file_path(keyword)}_{current_date_time}.yml")
     
     return {
         "analytics": analytics,
@@ -192,7 +192,7 @@ def analyze_product_sourcing_with_keyword_search(listing: dict, generate_report:
             print(f"search term generation on attempt {attempt} failed for - {listing['name']}; skipping current attempt")
             continue
             
-    c.log_conversation(f"{run_dir}/term_generation_{clean_file_path(listing['name'])}_{current_date_time}.txt")
+    c.log_conversation(f"{run_dir}/term_generation_{clean_file_path(listing['name'])}_{current_date_time}.yml")
     return results
 
 def analyze_product_sourcing_with_image_search(listing: dict, generate_report: bool = True) -> Optional[list]:
@@ -250,7 +250,7 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
     
     c.message("give a short reason for each answer")
     
-    c.log_conversation(f"{run_dir}/image_search_{clean_file_path(listing['name'])}_{current_date_time}.txt")
+    c.log_conversation(f"{run_dir}/image_search_{clean_file_path(listing['name'])}_{current_date_time}.yml")
     
     return pairs
 
@@ -278,7 +278,7 @@ def match_product_supplier_pair(listing: dict, against_listing: dict) -> Optiona
         return None
     
     c.message("why?")
-    c.log_conversation(f"{run_dir}/matching_against_{clean_file_path(listing['name'])}.txt")    
+    c.log_conversation(f"{run_dir}/matching_against_{clean_file_path(listing['name'])}.yml")
     return "yes" in result.lower()
 
 def languageOf(source: str) -> str:
