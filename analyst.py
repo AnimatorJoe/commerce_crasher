@@ -14,74 +14,102 @@ sources = ["amazon", "1688"]
 current_date_time = datetime.now().strftime("%Y-%m-%d_%H-%M")
 run_dir = f"runs/run_{current_date_time}"
 
-def search_term_exploration(term: str, recursions: int = 2, original_term: Optional[str] = None, terms_so_far: Optional[set] = set()):
-    if original_term is None:
-        global run_dir
-        run_dir = f"runs/run_{term}_{datetime.now().strftime('%Y-%m-%d_%H-%M')}" 
-        os.makedirs(run_dir, exist_ok=True)
+def search_term_exploration(initial_term: str, recursions: int=2, branching_factor: int=3): 
+    global run_dir
+    run_dir = f"runs/run_{initial_term}_{datetime.now().strftime('%Y-%m-%d_%H-%M')}" 
+    os.makedirs(run_dir, exist_ok=True)
+    
+    terms_so_far = set()
+    state = []    
+    queue = [{
+        "term": initial_term,
+        "parent": None,
+        "depth": 0
+    }]
+    c = Conversation(instruction=(
+        "I will provide webscraped search results on Amazon for select keywords. "
+        "Some scraped strings could be invalid, if so, ignore them. "
+        "Good profit margin is anything >50 percent; High volume is anything with more than 100 reviews or 1k purchases (purchases might not be scraped correctly, if so, ignore them). High price is anything >100 bucks; Good review is anything above 3.75 stars."
+    ))
         
-    if recursions == -1:
-        return
-    
-    analysis = analyze_keyword_conditions(term)
-
-    if analysis is None:
-        print(f"analysis failed for keyword - {term}")
-        return None
-
-    branching_factor = 3
-    valid = lambda x: is_valid_list_of(str, branching_factor)(x) and all(term not in terms_so_far for term in ast.literal_eval(x))
-    c = Conversation()
-    new_terms = c.message_until_response_valid(
-        valid=valid,
-        valid_criteria=f"answer should be a python list of {branching_factor} strings not including any elemet of {terms_so_far}, no talking, no markdown",
-        message=("when searching for products on Amazon and corresponding supplier on 1688.com for the term"
-                f"{term}\n"
-                "the following conditions were found:\n"
-                f"{analysis['analyst_feedback']}\n"
-                "please provide a list of new search terms based on this analysis")
-    )
-    new_terms = ast.literal_eval(new_terms)
-    terms_so_far.update(new_terms)
-     
-    analysis["followup_generation"] = c.transcript
-    analysis["original_term"] = original_term
-    analysis["term"] = term
-    
-    writeRuntimeState([analysis], f"{run_dir}/term_search.yml")
-    
-    for new_term in new_terms:
-        search_term_exploration(new_term, recursions - 1, term, terms_so_far)
-
-def analyze_keyword_conditions(keyword: str) -> Optional[dict]:
-    c = Conversation(instruction="please answer in a short sentence and provide a reason")
-    
-    analytics = generate_keyword_analytics(keyword)
-    if analytics is None:
-        print(f"analystics generation failed for keyword - {keyword}")
-        return None
-    
-    stringified_analytics = ""
-    for analytic in analytics:
-        if analytic:
+    while len(queue) > 0:
+        element = queue.pop(0)
+        term = element["term"]
+        parent = element["parent"]
+        depth = element["depth"]
+        
+        
+        analytics = generate_keyword_analytics(term)
+        if analytics is None:
+            print(f"analystics generation failed for keyword - {term}")
+            continue
+        
+        names, prices, ratings, reviews, purchases, margins, images = [], [], [], [], [], [], []
+        for analytic in analytics:
             ol = analytic['original_listing']
-            estimated_margin = analytic['estimated_margin'] if analytic['estimated_margin'] else "supplier not found, margin unknown"
-            stringified_analytics += f"{ol['name']}, {ol['price']}, {ol['rating']}, {ol['reviews']}, {ol['purchases']}, {estimated_margin}\n"
-    
-    c.message(
-        message=(
-            f"for the search term {keyword} on Amazon, the following products were found (name, price, rating, reviews, purchases, est. profit margin) with images listed in order of search results:\n"
-            f"{stringified_analytics}\n"
-            "please provide a summary on the challenges of this market, whether it is over saturated, low demand, etc. and why"
-        ),
-        images_urls=[analytic['original_listing']['image'] for analytic in analytics if analytic is not None])
-    
-    c.log_conversation(f"{run_dir}/summary_{clean_file_path(keyword)}_{current_date_time}.yml")
-    
-    return {
-        "analytics": analytics,
-        "analyst_feedback": c.transcript
-    } 
+            names.append(ol['name'])
+            prices.append(ol['price'])
+            ratings.append(ol['rating'])
+            reviews.append(ol['reviews'])
+            purchases.append(ol['purchases'])
+            margins.append(analytic['estimated_margin'] if analytic['estimated_margin'] else "supplier not found, margin unknown")
+            images.append(ol['image'])
+        
+        analyst_feedback = c.message(
+            message=(
+                f"for the search term {term}, the following product info is found on Amazon\n"
+                f"names     - {names}\n"
+                f"prices    - {prices}\n"
+                f"ratings   - {ratings}\n"
+                f"reviews   - {reviews}\n"
+                f"purchases - {purchases}\n"
+                f"margins   - {margins}\n"
+                "images are attached\n"
+                "write a summary of how this keyword compares to previous ones if there were any\n"
+                "please give a bullet point summary each on profit margins, price range, number of reviews/purchases, ratings, and how different the listed products are\n"
+                "write the summary at the end on if this term is saturated or niche\n"
+            ),
+            images_urls=images
+        )
+        c.log_conversation(f"{run_dir}/term_generation_{initial_term}_{current_date_time}.yml")
+       
+        
+        analysis = {
+            "analytics": analytics,
+            "analyst_feedback": analyst_feedback
+        }
+        
+        if analysis is None:
+            print(f"analysis failed for keyword - {term}")
+            return None
+        analysis["original_term"] = parent
+        analysis["term"] = term
+        
+        state.append(analysis)
+        writeRuntimeState([analysis], f"{run_dir}/term_search.yml")
+
+        if depth >= recursions:
+            continue
+
+
+        valid = lambda x: is_valid_list_of(str, branching_factor)(x) and all(term not in terms_so_far for term in ast.literal_eval(x))
+        new_terms = c.message_until_response_valid(
+            valid=valid,
+            valid_criteria=f"answer should be a python list of {branching_factor} strings not including any elemet of {terms_so_far}, no talking, no markdown",
+            message=("what are some unique items from the search results I shared\n"
+                    "based on this, come up with more niche keywords which could have high profit margin and low competition\n"
+                    "the keywords should be short and something a user would likely type in")
+        )
+        c.log_conversation(f"{run_dir}/term_generation_{initial_term}_{current_date_time}.yml")
+        new_terms = ast.literal_eval(new_terms)
+        terms_so_far.update(new_terms)
+        
+        for new_term in new_terms:
+            queue.append({
+                "term": new_term,
+                "parent": term,
+                "depth": depth + 1
+            })
 
 def generate_keyword_analytics(keyword: str) -> Optional[list]:
     search_results = scrape(
@@ -90,8 +118,10 @@ def generate_keyword_analytics(keyword: str) -> Optional[list]:
         max_results=5,
         remove_partially_extracted=True,
         result_output=f"{run_dir}/amazon_{current_date_time}_{clean_file_path(keyword)}.jsonl",
-        # corpus_output=f"{run_dir}/amazon_{current_date_time}_{clean_file_path(keyword)}.html"
     )
+    if search_results is None:
+        print(f"failed to get amazon search results for {keyword}")
+        return None
     
     analytics = []
     
@@ -153,7 +183,6 @@ def analyze_product_sourcing_with_keyword_search(listing: dict, generate_report:
             max_results=batch_size,
             remove_partially_extracted=True,
             result_output=f"{run_dir}/1688_{current_date_time}_{clean_file_path(search_term)}.jsonl",
-            # corpus_output=f"{run_dir}/1688_{current_date_time}_{clean_file_path(search_term)}.html"
         )
         
         if listings is None:
@@ -206,7 +235,6 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
         max_results=13,
         remove_partially_extracted=True,
         result_output=f"{run_dir}/1688_{current_date_time}_image_sr_{clean_file_path(listing_name)}.jsonl",
-        # corpus_output=f"{run_dir}/1688_{current_date_time}_image_sr_{clean_file_path(listing_name)}.html"
     )
     
     if suggested_listings is None:
@@ -218,10 +246,9 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
     question_string = (
         "the Amazon product\n"
         f"{listing['name']}\n"
-        "has a thumbnail listed on Amazon attached as the first image below\n\n"
-        "in addition, I will include several products from 1688\n"
-        "their names are listed below and their corresponding thumbnails are attached in the same order\n"
-        "please answer with a list of booleans, where each boolean corresponds to whether the 1688 product can be sold as the Amazon product\n\n"
+        "has an Amazon thumbnail attached as the first image below\n\n"
+        "products from 1688 have names and thumbnails listed after in the same order\n"
+        "return a list of booleans, for if each of the 1688 product can be sold as the Amazon one\n\n"
     )
     for suggested_listing in suggested_listings:
         question_string += f"{suggested_listing['name']}\n\n"

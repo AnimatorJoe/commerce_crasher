@@ -15,13 +15,26 @@ class Conversation:
         self.log_convo = log_convo
         self.color_code = f"\033[38;2;{random.randint(0, 255)};{random.randint(0, 255)};{random.randint(0, 255)}m"
 
-    def __init__(self, transcript: list, model: str = "gpt-4o", log_convo: bool = True):
-        self.__init__(model=model, log_convo=log_convo)
-        self.transcript = transcript
+    @staticmethod
+    def conversation_from_trascript(
+        transcript: list,
+        model: str = "gpt-4o",
+        log_convo: bool = True,
+        instruction: Optional[str] = None
+    ) -> "Conversation":
+        c = Conversation(model=model, log_convo=log_convo, instruction=instruction)
+        c.transcript = transcript
+        return c
 
-    def __init__(self, transcript_path: str, model: str = "gpt-4o", log_convo: bool = True):
+    @staticmethod
+    def conversation_from_file(
+        transcript_path: str,
+        model: str = "gpt-4o",
+        log_convo: bool = True,
+        instruction: Optional[str] = None
+    ) -> "Conversation":
         data = yaml.safe_load(open(transcript_path, "r"))
-        self.__init__(self, transcript=data, model=model, log_convo=log_convo)
+        return Conversation.conversation_from_trascript(transcript=data, model=model, log_convo=log_convo, instruction=instruction)
 
     def message(self, message: str, images_urls: Optional[List[str]] = None) -> Optional[str]:
         if self.log_convo:
@@ -68,18 +81,18 @@ class Conversation:
         images_urls: Optional[List[str]] = None,
         max_retries: int = 3
     ) -> Optional[str]:
-        result = self.message(f"{message}\nthe answer should meet this criteria - {valid_criteria}", images_urls)
+        result = self.message(f"{message}\nanswer should meet criteria - {valid_criteria}", images_urls)
         
         if result is not None and valid(result):
             return result
         
         for _ in range(max_retries):
-            result = self.message(f"the answer did not meet this criteria - {valid_criteria}; please answer again")
+            result = self.message(f"answer did not meet criteria - {valid_criteria}; answer again")
             if result is not None and valid(result):
                 return result
         
         return None
     
     def log_conversation(self, file_path: str):
-        with open(file_path, "a", encoding="utf-8") as file:
+        with open(file_path, "w", encoding="utf-8") as file:
             yaml.dump(self.transcript, file, allow_unicode=True)

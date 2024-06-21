@@ -143,9 +143,9 @@
         var rendering = `<h1>${term} <a href="https://www.amazon.com/s?k=${term}" target="_blank">[visit]</a></h1>`;
         
         try {
-          let summary = res.analyst_feedback[2];
+          let summary = res.analyst_feedback;
           rendering += "<h2>Summary</h2>";
-          rendering += "<div>" + marked.parse(summary.content) + "</div>";
+          rendering += "<div>" + marked.parse(summary) + "</div>";
 
           rendering += "<h2>Analytics</h2>";
           rendering += "<div class='table-container'><table>";
