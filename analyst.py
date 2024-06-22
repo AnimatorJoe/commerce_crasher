@@ -26,11 +26,6 @@ def search_term_exploration(initial_term: str, recursions: int=2, branching_fact
         "parent": None,
         "depth": 0
     }]
-    c = Conversation(instruction=(
-        "I will provide webscraped search results on Amazon for select keywords. "
-        "Some scraped strings could be invalid, if so, ignore them. "
-        "Good profit margin is anything >50 percent; High volume is anything with more than 100 reviews or 1k purchases (purchases might not be scraped correctly, if so, ignore them). High price is anything >100 bucks; Good review is anything above 3.75 stars."
-    ))
         
     while len(queue) > 0:
         element = queue.pop(0)
@@ -55,6 +50,11 @@ def search_term_exploration(initial_term: str, recursions: int=2, branching_fact
             margins.append(analytic['estimated_margin'] if analytic['estimated_margin'] else "supplier not found, margin unknown")
             images.append(ol['image'])
         
+        c = Conversation(instruction=(
+            "I will provide webscraped search results on Amazon for select keywords. "
+            "Some scraped strings could be invalid, if so, ignore them. "
+            "Good profit margin is anything >50 percent; High volume is anything with more than 100 reviews or 1k purchases (purchases might not be scraped correctly, if so, ignore them). High price is anything >100 bucks; Good review is anything above 3.75 stars."
+        ))
         analyst_feedback = c.message(
             message=(
                 f"for the search term {term}, the following product info is found on Amazon\n"
@@ -71,7 +71,7 @@ def search_term_exploration(initial_term: str, recursions: int=2, branching_fact
             ),
             images_urls=images
         )
-        c.log_conversation(f"{run_dir}/term_generation_{initial_term}_{current_date_time}.yml")
+        c.log_conversation(f"{run_dir}/term_analysis_{term}_{current_date_time}.yml")
        
         
         analysis = {
@@ -100,7 +100,7 @@ def search_term_exploration(initial_term: str, recursions: int=2, branching_fact
                     "based on this, come up with more niche keywords which could have high profit margin and low competition\n"
                     "the keywords should be short and something a user would likely type in")
         )
-        c.log_conversation(f"{run_dir}/term_generation_{initial_term}_{current_date_time}.yml")
+        c.log_conversation(f"{run_dir}/term_analysis_{term}_{current_date_time}.yml")
         new_terms = ast.literal_eval(new_terms)
         terms_so_far.update(new_terms)
         
