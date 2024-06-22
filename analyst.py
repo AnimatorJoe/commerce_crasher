@@ -126,27 +126,31 @@ def generate_keyword_analytics(keyword: str) -> Optional[list]:
     analytics = []
     
     for listing in search_results:
-        result = analyze_product_sourcing_with_image_search(listing)
-        if result is None or len(result) == 0:
-            analytics.append({
+        try:
+            result = analyze_product_sourcing_with_image_search(listing)
+            if result is None or len(result) == 0:
+                raise ValueError("No valid result")
+            
+            listing_cost = float(listing['price'][1:])
+            cost_of_matches = [pair['usd_cost'] for pair in result if pair['match']]
+            
+            estimated_cost = sum(cost_of_matches) / len(cost_of_matches) if len(cost_of_matches) > 0 else None
+            estimated_margin = (listing_cost - estimated_cost) / listing_cost if estimated_cost else None
+            listing_analytic = {
+                "original_listing": listing,
+                "comparisons": result,
+                "estimated_cost": estimated_cost,
+                "estimated_margin": estimated_margin,
+            }
+        except ValueError as e:
+            print(f"Error processing listing: {e}")
+            listing_analytic = {
                 "original_listing": listing,
                 "comparisons": [],
                 "estimated_cost": None,
                 "estimated_margin": None,
-            })
-            continue
+            }
         
-        listing_cost = float(listing['price'][1:])
-        cost_of_matches = [pair['usd_cost'] for pair in result if pair['match']]
-        
-        estimated_cost = sum(cost_of_matches) / len(cost_of_matches) if len(cost_of_matches) > 0 else None
-        estimated_margin = (listing_cost - estimated_cost) / listing_cost if estimated_cost else None
-        listing_analytic = {
-            "original_listing": listing,
-            "comparisons": result,
-            "estimated_cost": estimated_cost,
-            "estimated_margin": estimated_margin,
-        }
         analytics.append(listing_analytic)
         
     return analytics
@@ -266,14 +270,18 @@ def analyze_product_sourcing_with_image_search(listing: dict, generate_report: b
     
     matches = ast.literal_eval(result)
     
-    pairs = [
-        {
-            "match": is_match,
-            "usd_cost": toUSD(float(supplier_listing['price']), "1688"), # 1688 price is in RMB
-            "supplier_listing": supplier_listing
-        }
-        for is_match, supplier_listing in zip(matches, suggested_listings)
-    ]
+    pairs = []
+    for is_match, supplier_listing in zip(matches, suggested_listings):
+        try:
+            usd_cost = toUSD(float(supplier_listing['price']), "1688")
+            pairs.append({
+                "match": is_match,
+                "usd_cost": usd_cost,
+                "supplier_listing": supplier_listing
+            })
+        except ValueError as e:
+            print(f"Error processing listing: {e}")
+            continue
     
     c.message("give a short reason for each answer")
     
