@@ -3,3 +3,6 @@ requests
 playwright
 beautifulsoup4
 openai
+anthropic
+pyyaml
+httpx

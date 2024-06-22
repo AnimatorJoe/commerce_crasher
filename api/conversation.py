@@ -14,7 +14,7 @@ openai_client = OpenAI()
 anthropic_client = Anthropic()
 
 class Conversation:
-    def __init__(self, model: str = "claude-3-sonnet-20240229", api: str = "anthropic", log_convo: bool = True, instruction: Optional[str] = None):
+    def __init__(self, model: str = "gpt-4o", api: str = "openai", log_convo: bool = True, instruction: Optional[str] = None):
         assert api in ["openai", "anthropic"]
         self.model = model
         self.api = api
